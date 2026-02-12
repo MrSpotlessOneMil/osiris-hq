@@ -1,563 +1,415 @@
 'use client';
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 
 // ============== DATA ==============
 
-const EXECUTIVES = {
-  osiris: { name: 'Osiris', role: 'COO', emoji: '𓂀', color: '#a855f7' },
-  iris: { name: 'Iris', role: 'CMO', emoji: '🦞', color: '#ec4899' },
-  apollo: { name: 'Apollo', role: 'CRO', emoji: '🏹', color: '#f59e0b' },
-  atlas: { name: 'Atlas', role: 'CPO', emoji: '🗺️', color: '#3b82f6' },
-  horus: { name: 'Horus', role: 'CSO', emoji: '🦅', color: '#22c55e' },
-  thoth: { name: 'Thoth', role: 'CDO', emoji: '📊', color: '#06b6d4' },
+const AGENTS = {
+  osiris: { name: 'Osiris', emoji: '𓂀', color: '#9333ea', role: 'The Boss' },
+  iris: { name: 'Iris', emoji: '🦞', color: '#ec4899', role: 'Marketing' },
+  apollo: { name: 'Apollo', emoji: '🏹', color: '#f59e0b', role: 'Sales' },
+  atlas: { name: 'Atlas', emoji: '🗺️', color: '#3b82f6', role: 'Product' },
+  horus: { name: 'Horus', emoji: '🦅', color: '#22c55e', role: 'Success' },
+  thoth: { name: 'Thoth', emoji: '📊', color: '#06b6d4', role: 'Data' },
 } as const;
 
-type ExecutiveKey = keyof typeof EXECUTIVES;
+type AgentKey = keyof typeof AGENTS;
 
-interface Mission {
-  id: string;
-  name: string;
-  command: string;
-  agent: ExecutiveKey;
-  duration: number;
-  description: string;
-}
-
-interface ActiveMission {
-  mission: Mission;
-  startTime: Date;
-  progress: number;
-}
-
-interface LogEntry {
-  id: number;
-  timestamp: Date;
-  type: 'command' | 'system' | 'success' | 'error' | 'info';
-  agent?: ExecutiveKey;
-  message: string;
-}
-
-const MISSIONS: Mission[] = [
-  // Apollo
-  { id: 'outbound', name: 'Outbound Campaign', command: 'apollo outbound', agent: 'apollo', duration: 30, description: 'Send 50 cold emails to cleaning companies' },
-  { id: 'follow-up', name: 'Lead Follow-up', command: 'apollo follow-up', agent: 'apollo', duration: 20, description: 'Nurture warm leads in pipeline' },
-  { id: 'book-demo', name: 'Book Demo', command: 'apollo demo', agent: 'apollo', duration: 45, description: 'Schedule sales call with qualified lead' },
-  { id: 'close', name: 'Close Deal', command: 'apollo close', agent: 'apollo', duration: 60, description: 'Finalize contract with prospect' },
-  
-  // Iris
-  { id: 'content', name: 'Create Content', command: 'iris content', agent: 'iris', duration: 25, description: 'Write video script or social post' },
-  { id: 'schedule', name: 'Schedule Posts', command: 'iris schedule', agent: 'iris', duration: 15, description: 'Queue content for publishing' },
-  { id: 'research', name: 'Competitor Intel', command: 'iris recon', agent: 'iris', duration: 35, description: 'Analyze competitor activity' },
-  { id: 'campaign', name: 'Launch Campaign', command: 'iris launch', agent: 'iris', duration: 60, description: 'Execute marketing campaign' },
-  
-  // Horus
-  { id: 'checkin', name: 'Client Check-in', command: 'horus checkin', agent: 'horus', duration: 20, description: 'Touch base with existing clients' },
-  { id: 'reviews', name: 'Request Reviews', command: 'horus reviews', agent: 'horus', duration: 15, description: 'Ask satisfied customers for testimonials' },
-  { id: 'onboard', name: 'Onboard Client', command: 'horus onboard', agent: 'horus', duration: 45, description: 'Set up new customer account' },
-  { id: 'save', name: 'Save Account', command: 'horus save', agent: 'horus', duration: 40, description: 'Rescue at-risk customer' },
-  
-  // Thoth
-  { id: 'report', name: 'Generate Report', command: 'thoth report', agent: 'thoth', duration: 15, description: 'Compile daily metrics analysis' },
-  { id: 'analyze', name: 'Analyze Funnel', command: 'thoth analyze', agent: 'thoth', duration: 30, description: 'Find conversion bottlenecks' },
-  { id: 'forecast', name: 'Revenue Forecast', command: 'thoth forecast', agent: 'thoth', duration: 25, description: 'Project next month revenue' },
-  
-  // Atlas
-  { id: 'bug', name: 'Fix Bug', command: 'atlas fix', agent: 'atlas', duration: 35, description: 'Squash reported issue' },
-  { id: 'feature', name: 'Ship Feature', command: 'atlas ship', agent: 'atlas', duration: 60, description: 'Deploy new functionality' },
-  { id: 'sync', name: 'Sync with Jack', command: 'atlas sync', agent: 'atlas', duration: 20, description: 'Coordinate with dev lead' },
-  
-  // Osiris
-  { id: 'brief', name: 'Morning Brief', command: 'osiris brief', agent: 'osiris', duration: 15, description: 'Align team for the day' },
-  { id: 'strategy', name: 'Strategic Planning', command: 'osiris plan', agent: 'osiris', duration: 45, description: 'Plot world domination' },
-  { id: 'boost', name: 'Boost Team', command: 'osiris boost', agent: 'osiris', duration: 30, description: 'Increase all agent efficiency' },
+const STATIONS = [
+  { id: 'sales', name: 'Sales HQ', emoji: '🏢', x: 15, y: 30, color: '#f59e0b' },
+  { id: 'marketing', name: 'Content Studio', emoji: '🎬', x: 75, y: 25, color: '#ec4899' },
+  { id: 'product', name: 'Dev Lab', emoji: '⚙️', x: 20, y: 70, color: '#3b82f6' },
+  { id: 'success', name: 'Happy Place', emoji: '💚', x: 80, y: 65, color: '#22c55e' },
+  { id: 'data', name: 'Brain Center', emoji: '🧠', x: 50, y: 80, color: '#06b6d4' },
+  { id: 'hq', name: 'Command', emoji: '👑', x: 50, y: 20, color: '#9333ea' },
 ];
 
-const COMMANDS = {
-  help: 'Show available commands',
-  status: 'Show system status',
-  agents: 'List all agents and their status',
-  missions: 'List available missions',
-  clear: 'Clear terminal',
-  ...Object.fromEntries(MISSIONS.map(m => [m.command, m.description])),
-};
+const CHATS = [
+  { from: 'apollo', to: 'iris', message: "Got 3 new leads!" },
+  { from: 'iris', to: 'apollo', message: "Nice! I'll make content about it" },
+  { from: 'horus', to: 'thoth', message: "Clients are happy today" },
+  { from: 'thoth', to: 'horus', message: "Stats confirm it 📈" },
+  { from: 'atlas', to: 'osiris', message: "New feature shipped!" },
+  { from: 'osiris', to: 'atlas', message: "Beautiful work ✨" },
+  { from: 'iris', to: 'horus', message: "Can I get a testimonial?" },
+  { from: 'horus', to: 'iris', message: "Got 5 ready for you!" },
+  { from: 'apollo', to: 'osiris', message: "Demo went great!" },
+  { from: 'osiris', to: 'apollo', message: "That's my guy 🏆" },
+  { from: 'thoth', to: 'atlas', message: "Found a bug pattern" },
+  { from: 'atlas', to: 'thoth', message: "On it! 🔧" },
+];
+
+interface AgentState {
+  id: AgentKey;
+  x: number;
+  y: number;
+  targetX: number;
+  targetY: number;
+  state: 'walking' | 'working' | 'chatting' | 'idle';
+  direction: 'left' | 'right';
+  chatBubble: string | null;
+  chatWith: AgentKey | null;
+}
 
 // ============== COMPONENTS ==============
 
-function Terminal({ 
-  logs, 
-  onCommand,
-  inputRef 
-}: { 
-  logs: LogEntry[];
-  onCommand: (cmd: string) => void;
-  inputRef: React.RefObject<HTMLInputElement | null>;
-}) {
-  const [input, setInput] = useState('');
-  const [history, setHistory] = useState<string[]>([]);
-  const [historyIndex, setHistoryIndex] = useState(-1);
-  const logsEndRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    logsEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [logs]);
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!input.trim()) return;
-    
-    onCommand(input.trim());
-    setHistory(prev => [input.trim(), ...prev].slice(0, 50));
-    setHistoryIndex(-1);
-    setInput('');
-  };
-
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'ArrowUp') {
-      e.preventDefault();
-      if (historyIndex < history.length - 1) {
-        const newIndex = historyIndex + 1;
-        setHistoryIndex(newIndex);
-        setInput(history[newIndex]);
-      }
-    } else if (e.key === 'ArrowDown') {
-      e.preventDefault();
-      if (historyIndex > 0) {
-        const newIndex = historyIndex - 1;
-        setHistoryIndex(newIndex);
-        setInput(history[newIndex]);
-      } else if (historyIndex === 0) {
-        setHistoryIndex(-1);
-        setInput('');
-      }
-    } else if (e.key === 'Tab') {
-      e.preventDefault();
-      // Autocomplete
-      const matches = Object.keys(COMMANDS).filter(cmd => cmd.startsWith(input.toLowerCase()));
-      if (matches.length === 1) {
-        setInput(matches[0]);
-      }
-    }
-  };
-
-  const getLogColor = (type: LogEntry['type']) => {
-    switch (type) {
-      case 'command': return 'text-purple-400';
-      case 'success': return 'text-green-400';
-      case 'error': return 'text-red-400';
-      case 'system': return 'text-cyan-400';
-      default: return 'text-zinc-400';
-    }
-  };
-
+function Cloud({ x, delay }: { x: number; delay: number }) {
   return (
     <div 
-      className="bg-black/90 rounded-lg border border-zinc-800 font-mono text-sm h-full flex flex-col cursor-text"
-      onClick={() => inputRef.current?.focus()}
+      className="absolute text-5xl opacity-60 animate-float select-none pointer-events-none"
+      style={{ 
+        left: `${x}%`, 
+        top: '5%',
+        animationDelay: `${delay}s`,
+        animationDuration: '8s'
+      }}
     >
-      {/* Terminal header */}
-      <div className="flex items-center gap-2 px-4 py-2 border-b border-zinc-800 bg-zinc-900/50">
-        <div className="w-3 h-3 rounded-full bg-red-500" />
-        <div className="w-3 h-3 rounded-full bg-yellow-500" />
-        <div className="w-3 h-3 rounded-full bg-green-500" />
-        <span className="ml-2 text-zinc-500 text-xs">osiris-hq — bash</span>
-      </div>
+      ☁️
+    </div>
+  );
+}
+
+function Tree({ x, y, size }: { x: number; y: number; size: 'sm' | 'md' | 'lg' }) {
+  const sizes = { sm: 'text-2xl', md: 'text-3xl', lg: 'text-4xl' };
+  return (
+    <div 
+      className={`absolute ${sizes[size]} select-none pointer-events-none`}
+      style={{ left: `${x}%`, top: `${y}%`, transform: 'translate(-50%, -100%)' }}
+    >
+      🌳
+    </div>
+  );
+}
+
+function Flower({ x, y }: { x: number; y: number }) {
+  const flowers = ['🌸', '🌼', '🌺', '💐', '🌻'];
+  const flower = flowers[Math.floor((x + y) % flowers.length)];
+  return (
+    <div 
+      className="absolute text-lg select-none pointer-events-none opacity-80"
+      style={{ left: `${x}%`, top: `${y}%` }}
+    >
+      {flower}
+    </div>
+  );
+}
+
+function Station({ station }: { station: typeof STATIONS[0] }) {
+  return (
+    <div 
+      className="absolute transform -translate-x-1/2 -translate-y-1/2 z-10"
+      style={{ left: `${station.x}%`, top: `${station.y}%` }}
+    >
+      {/* Building shadow */}
+      <div className="absolute inset-0 bg-black/20 rounded-2xl blur-sm transform translate-y-2 scale-95" />
       
-      {/* Terminal content */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-1">
-        {logs.map((log) => (
-          <div key={log.id} className="flex gap-2">
-            <span className="text-zinc-600 shrink-0">
-              [{log.timestamp.toLocaleTimeString('en-US', { hour12: false })}]
-            </span>
-            {log.agent && (
-              <span style={{ color: EXECUTIVES[log.agent].color }}>
-                [{EXECUTIVES[log.agent].name}]
-              </span>
-            )}
-            <span className={getLogColor(log.type)}>{log.message}</span>
+      {/* Building */}
+      <div 
+        className="relative bg-white/90 backdrop-blur-sm rounded-2xl p-4 shadow-xl border-4 min-w-[100px]"
+        style={{ borderColor: station.color }}
+      >
+        <div className="text-center">
+          <span className="text-4xl block mb-1">{station.emoji}</span>
+          <p className="text-xs font-bold text-zinc-700">{station.name}</p>
+        </div>
+        
+        {/* Roof decoration */}
+        <div 
+          className="absolute -top-3 left-1/2 -translate-x-1/2 w-8 h-3 rounded-t-full"
+          style={{ backgroundColor: station.color }}
+        />
+      </div>
+    </div>
+  );
+}
+
+function Agent({ agent }: { agent: AgentState }) {
+  const data = AGENTS[agent.id];
+  
+  return (
+    <div
+      className="absolute z-20 transition-all ease-linear"
+      style={{
+        left: `${agent.x}%`,
+        top: `${agent.y}%`,
+        transform: 'translate(-50%, -50%)',
+        transitionDuration: agent.state === 'walking' ? '2s' : '0s'
+      }}
+    >
+      {/* Chat bubble */}
+      {agent.chatBubble && (
+        <div className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 animate-fadeIn">
+          <div className="bg-white rounded-xl px-3 py-1.5 shadow-lg border-2 border-zinc-200 whitespace-nowrap max-w-[150px]">
+            <p className="text-xs text-zinc-700 truncate">{agent.chatBubble}</p>
           </div>
-        ))}
-        <div ref={logsEndRef} />
-      </div>
+          <div className="w-3 h-3 bg-white border-r-2 border-b-2 border-zinc-200 rotate-45 absolute left-1/2 -translate-x-1/2 -bottom-1.5" />
+        </div>
+      )}
       
-      {/* Input */}
-      <form onSubmit={handleSubmit} className="border-t border-zinc-800 p-4">
-        <div className="flex items-center gap-2">
-          <span className="text-purple-400">cvo@osiris-hq</span>
-          <span className="text-zinc-500">:</span>
-          <span className="text-cyan-400">~</span>
-          <span className="text-zinc-500">$</span>
-          <input
-            ref={inputRef}
-            type="text"
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={handleKeyDown}
-            className="flex-1 bg-transparent outline-none text-green-400 caret-green-400"
-            autoFocus
-            spellCheck={false}
-          />
-        </div>
-      </form>
-    </div>
-  );
-}
-
-function AgentPanel({ 
-  agents, 
-  activeMissions 
-}: { 
-  agents: Record<ExecutiveKey, { status: 'idle' | 'working' }>;
-  activeMissions: ActiveMission[];
-}) {
-  return (
-    <div className="bg-zinc-900/80 rounded-lg border border-zinc-800 p-4">
-      <h3 className="text-xs font-bold text-zinc-500 uppercase tracking-wider mb-3">AI Executive Team</h3>
-      <div className="space-y-3">
-        {(Object.keys(EXECUTIVES) as ExecutiveKey[]).map(key => {
-          const exec = EXECUTIVES[key];
-          const agent = agents[key];
-          const mission = activeMissions.find(m => m.mission.agent === key);
-          
-          return (
-            <div key={key} className="flex items-center gap-3">
-              <div 
-                className="w-8 h-8 rounded-lg flex items-center justify-center text-lg border"
-                style={{ 
-                  borderColor: exec.color + '50',
-                  backgroundColor: exec.color + '10'
-                }}
-              >
-                {exec.emoji}
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm font-medium" style={{ color: exec.color }}>{exec.name}</span>
-                  <span className={`text-xs ${agent.status === 'working' ? 'text-green-400' : 'text-zinc-500'}`}>
-                    {agent.status === 'working' ? 'ACTIVE' : 'STANDBY'}
-                  </span>
-                </div>
-                {mission ? (
-                  <div className="mt-1">
-                    <div className="flex items-center justify-between text-xs text-zinc-400 mb-1">
-                      <span>{mission.mission.name}</span>
-                      <span>{Math.ceil((mission.mission.duration * (1 - mission.progress)))}s</span>
-                    </div>
-                    <div className="h-1 bg-zinc-800 rounded-full overflow-hidden">
-                      <div 
-                        className="h-full transition-all duration-1000"
-                        style={{ width: `${mission.progress * 100}%`, backgroundColor: exec.color }}
-                      />
-                    </div>
-                  </div>
-                ) : (
-                  <p className="text-xs text-zinc-600 truncate">Awaiting orders...</p>
-                )}
-              </div>
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-function MetricsPanel({ metrics }: { metrics: Record<string, number | string> }) {
-  return (
-    <div className="bg-zinc-900/80 rounded-lg border border-zinc-800 p-4">
-      <h3 className="text-xs font-bold text-zinc-500 uppercase tracking-wider mb-3">System Metrics</h3>
-      <div className="grid grid-cols-2 gap-3">
-        <div className="bg-black/40 rounded-lg p-3">
-          <p className="text-xs text-zinc-500">MRR</p>
-          <p className="text-xl font-bold text-green-400">${metrics.mrr?.toLocaleString()}</p>
-        </div>
-        <div className="bg-black/40 rounded-lg p-3">
-          <p className="text-xs text-zinc-500">Clients</p>
-          <p className="text-xl font-bold text-purple-400">{metrics.clients}</p>
-        </div>
-        <div className="bg-black/40 rounded-lg p-3">
-          <p className="text-xs text-zinc-500">Pipeline</p>
-          <p className="text-xl font-bold text-orange-400">{metrics.leads}</p>
-        </div>
-        <div className="bg-black/40 rounded-lg p-3">
-          <p className="text-xs text-zinc-500">Conversion</p>
-          <p className="text-xl font-bold text-cyan-400">{metrics.conversion}%</p>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function MissionQueue({ missions, onSelect }: { missions: Mission[]; onSelect: (m: Mission) => void }) {
-  const [filter, setFilter] = useState<ExecutiveKey | 'all'>('all');
-  
-  const filtered = filter === 'all' ? missions : missions.filter(m => m.agent === filter);
-  
-  return (
-    <div className="bg-zinc-900/80 rounded-lg border border-zinc-800 p-4">
-      <div className="flex items-center justify-between mb-3">
-        <h3 className="text-xs font-bold text-zinc-500 uppercase tracking-wider">Mission Queue</h3>
-        <select 
-          value={filter}
-          onChange={(e) => setFilter(e.target.value as ExecutiveKey | 'all')}
-          className="text-xs bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-zinc-300"
+      {/* Agent body */}
+      <div 
+        className={`relative transition-transform ${agent.state === 'walking' ? 'animate-bounce' : ''}`}
+        style={{ transform: agent.direction === 'left' ? 'scaleX(-1)' : 'scaleX(1)' }}
+      >
+        {/* Shadow */}
+        <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-10 h-3 bg-black/20 rounded-full blur-sm" />
+        
+        {/* Character */}
+        <div 
+          className="w-14 h-14 rounded-full flex items-center justify-center text-3xl shadow-lg border-4 bg-white"
+          style={{ borderColor: data.color }}
         >
-          <option value="all">All Agents</option>
-          {(Object.keys(EXECUTIVES) as ExecutiveKey[]).map(key => (
-            <option key={key} value={key}>{EXECUTIVES[key].name}</option>
-          ))}
-        </select>
+          {data.emoji}
+        </div>
+        
+        {/* Working indicator */}
+        {agent.state === 'working' && (
+          <div className="absolute -top-1 -right-1">
+            <span className="text-lg animate-pulse">⚡</span>
+          </div>
+        )}
+        
+        {/* Name tag */}
+        <div 
+          className="absolute -bottom-5 left-1/2 -translate-x-1/2 px-2 py-0.5 rounded-full text-white text-xs font-bold whitespace-nowrap"
+          style={{ backgroundColor: data.color }}
+        >
+          {data.name}
+        </div>
       </div>
-      <div className="space-y-2 max-h-[300px] overflow-y-auto">
-        {filtered.map(mission => {
-          const exec = EXECUTIVES[mission.agent];
-          return (
-            <button
-              key={mission.id}
-              onClick={() => onSelect(mission)}
-              className="w-full text-left p-3 rounded-lg border border-zinc-800 hover:border-purple-500/50 hover:bg-purple-500/5 transition-all group"
-            >
-              <div className="flex items-center justify-between mb-1">
-                <span className="text-sm font-medium text-zinc-200 group-hover:text-white">
-                  {mission.name}
-                </span>
-                <span className="text-xs" style={{ color: exec.color }}>{exec.emoji} {exec.name}</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <code className="text-xs text-purple-400 bg-purple-500/10 px-1.5 py-0.5 rounded">
-                  {mission.command}
-                </code>
-                <span className="text-xs text-zinc-500">{mission.duration}s</span>
-              </div>
-            </button>
-          );
-        })}
-      </div>
+    </div>
+  );
+}
+
+function Sun() {
+  return (
+    <div className="absolute top-4 right-8 text-6xl animate-pulse select-none">
+      ☀️
+    </div>
+  );
+}
+
+function Bird({ delay }: { delay: number }) {
+  return (
+    <div 
+      className="absolute text-2xl animate-fly select-none pointer-events-none"
+      style={{ 
+        animationDelay: `${delay}s`,
+        top: `${10 + Math.random() * 15}%`
+      }}
+    >
+      🐦
     </div>
   );
 }
 
 // ============== MAIN ==============
 
-export default function CommandCenter() {
-  const inputRef = useRef<HTMLInputElement>(null);
-  
-  const [logs, setLogs] = useState<LogEntry[]>([
-    { id: 0, timestamp: new Date(), type: 'system', message: '=== OSIRIS HQ COMMAND CENTER ===' },
-    { id: 1, timestamp: new Date(), type: 'system', message: 'AI Executive Team initialized and standing by.' },
-    { id: 2, timestamp: new Date(), type: 'info', message: 'Type "help" to see available commands, or "missions" to see available operations.' },
-    { id: 3, timestamp: new Date(), type: 'info', message: 'Click any mission card to auto-fill the command.' },
+export default function EmpireView() {
+  const [agents, setAgents] = useState<AgentState[]>([
+    { id: 'osiris', x: 50, y: 40, targetX: 50, targetY: 40, state: 'idle', direction: 'right', chatBubble: null, chatWith: null },
+    { id: 'iris', x: 70, y: 35, targetX: 70, targetY: 35, state: 'working', direction: 'left', chatBubble: null, chatWith: null },
+    { id: 'apollo', x: 20, y: 40, targetX: 20, targetY: 40, state: 'working', direction: 'right', chatBubble: null, chatWith: null },
+    { id: 'atlas', x: 25, y: 60, targetX: 25, targetY: 60, state: 'working', direction: 'right', chatBubble: null, chatWith: null },
+    { id: 'horus', x: 75, y: 55, targetX: 75, targetY: 55, state: 'working', direction: 'left', chatBubble: null, chatWith: null },
+    { id: 'thoth', x: 55, y: 70, targetX: 55, targetY: 70, state: 'working', direction: 'left', chatBubble: null, chatWith: null },
   ]);
-  
-  const [agents, setAgents] = useState<Record<ExecutiveKey, { status: 'idle' | 'working' }>>({
-    osiris: { status: 'idle' },
-    iris: { status: 'idle' },
-    apollo: { status: 'idle' },
-    atlas: { status: 'idle' },
-    horus: { status: 'idle' },
-    thoth: { status: 'idle' },
-  });
-  
-  const [activeMissions, setActiveMissions] = useState<ActiveMission[]>([]);
-  
-  const [metrics, setMetrics] = useState({
-    mrr: 1750,
-    clients: 2,
-    leads: 15,
-    conversion: 67,
-  });
 
-  const addLog = useCallback((type: LogEntry['type'], message: string, agent?: ExecutiveKey) => {
-    setLogs(prev => [...prev, {
-      id: Date.now() + Math.random(),
-      timestamp: new Date(),
-      type,
-      agent,
-      message
-    }]);
-  }, []);
-
-  // Mission progress
+  // Agent movement and behavior
   useEffect(() => {
     const interval = setInterval(() => {
-      setActiveMissions(prev => {
-        const updated: ActiveMission[] = [];
-        const completed: ActiveMission[] = [];
+      setAgents(prev => prev.map(agent => {
+        const roll = Math.random();
         
-        prev.forEach(am => {
-          const newProgress = am.progress + (1 / am.mission.duration);
-          if (newProgress >= 1) {
-            completed.push(am);
-          } else {
-            updated.push({ ...am, progress: newProgress });
-          }
-        });
+        // 30% chance to start walking to a new spot
+        if (roll < 0.3 && agent.state !== 'chatting') {
+          const newX = 15 + Math.random() * 70;
+          const newY = 25 + Math.random() * 55;
+          return {
+            ...agent,
+            x: newX,
+            y: newY,
+            state: 'walking' as const,
+            direction: newX > agent.x ? 'right' as const : 'left' as const,
+            chatBubble: null
+          };
+        }
         
-        // Handle completed missions
-        completed.forEach(am => {
-          setAgents(prev => ({
-            ...prev,
-            [am.mission.agent]: { status: 'idle' }
-          }));
-          
-          addLog('success', `Mission "${am.mission.name}" completed successfully.`, am.mission.agent);
-          
-          // Update metrics based on mission
-          if (am.mission.id === 'outbound') {
-            setMetrics(prev => ({ ...prev, leads: prev.leads + 3 }));
-            addLog('info', '+3 leads added to pipeline');
-          } else if (am.mission.id === 'close') {
-            setMetrics(prev => ({ ...prev, clients: prev.clients + 1, mrr: prev.mrr + 500 }));
-            addLog('success', '🎉 NEW CLIENT ACQUIRED! +$500 MRR');
-          } else if (am.mission.id === 'reviews') {
-            addLog('info', '2 new 5-star reviews requested');
-          }
-        });
+        // 20% chance to start working
+        if (roll < 0.5 && agent.state === 'walking') {
+          return { ...agent, state: 'working' as const };
+        }
         
-        return updated;
-      });
-    }, 1000);
-    
-    return () => clearInterval(interval);
-  }, [addLog]);
-
-  const executeCommand = useCallback((cmd: string) => {
-    const trimmed = cmd.toLowerCase().trim();
-    addLog('command', `$ ${cmd}`);
-    
-    // Parse command
-    if (trimmed === 'help') {
-      addLog('system', '=== AVAILABLE COMMANDS ===');
-      Object.entries(COMMANDS).forEach(([cmd, desc]) => {
-        addLog('info', `  ${cmd.padEnd(20)} - ${desc}`);
-      });
-      return;
-    }
-    
-    if (trimmed === 'clear') {
-      setLogs([]);
-      return;
-    }
-    
-    if (trimmed === 'status') {
-      addLog('system', '=== SYSTEM STATUS ===');
-      addLog('info', `MRR: $${metrics.mrr.toLocaleString()} | Clients: ${metrics.clients} | Pipeline: ${metrics.leads} leads`);
-      const working = Object.values(agents).filter(a => a.status === 'working').length;
-      addLog('info', `Agents: ${working}/6 active`);
-      return;
-    }
-    
-    if (trimmed === 'agents') {
-      addLog('system', '=== AI EXECUTIVE TEAM ===');
-      (Object.keys(EXECUTIVES) as ExecutiveKey[]).forEach(key => {
-        const exec = EXECUTIVES[key];
-        const agent = agents[key];
-        const mission = activeMissions.find(m => m.mission.agent === key);
-        addLog('info', `  ${exec.emoji} ${exec.name.padEnd(10)} [${exec.role}] - ${
-          mission ? `WORKING: ${mission.mission.name} (${Math.round(mission.progress * 100)}%)` : 'STANDBY'
-        }`);
-      });
-      return;
-    }
-    
-    if (trimmed === 'missions') {
-      addLog('system', '=== AVAILABLE MISSIONS ===');
-      MISSIONS.forEach(m => {
-        const exec = EXECUTIVES[m.agent];
-        addLog('info', `  ${m.command.padEnd(18)} [${exec.name}] ${m.name}`);
-      });
-      return;
-    }
-    
-    // Check for mission commands
-    const mission = MISSIONS.find(m => m.command === trimmed);
-    if (mission) {
-      const agent = agents[mission.agent];
-      const exec = EXECUTIVES[mission.agent];
-      
-      if (agent.status === 'working') {
-        addLog('error', `${exec.name} is currently busy. Wait for current mission to complete.`);
-        return;
-      }
-      
-      // Start mission
-      setAgents(prev => ({
-        ...prev,
-        [mission.agent]: { status: 'working' }
+        // 10% chance to go idle
+        if (roll < 0.6 && agent.state === 'working') {
+          return { ...agent, state: 'idle' as const };
+        }
+        
+        return agent;
       }));
-      
-      setActiveMissions(prev => [...prev, {
-        mission,
-        startTime: new Date(),
-        progress: 0
-      }]);
-      
-      addLog('system', `Deploying ${exec.name} on mission: ${mission.name}`, mission.agent);
-      addLog('info', mission.description, mission.agent);
-      addLog('info', `ETA: ${mission.duration} seconds`, mission.agent);
-      return;
-    }
-    
-    // Unknown command
-    addLog('error', `Command not recognized: "${cmd}". Type "help" for available commands.`);
-  }, [addLog, agents, activeMissions, metrics]);
+    }, 3000);
 
-  const handleMissionSelect = useCallback((mission: Mission) => {
-    if (inputRef.current) {
-      inputRef.current.value = mission.command;
-      inputRef.current.focus();
-      // Trigger change event
-      const event = new Event('input', { bubbles: true });
-      inputRef.current.dispatchEvent(event);
-    }
+    return () => clearInterval(interval);
+  }, []);
+
+  // Chat system
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const chat = CHATS[Math.floor(Math.random() * CHATS.length)];
+      
+      setAgents(prev => prev.map(agent => {
+        if (agent.id === chat.from) {
+          return {
+            ...agent,
+            state: 'chatting' as const,
+            chatBubble: chat.message,
+            chatWith: chat.to as AgentKey
+          };
+        }
+        return agent;
+      }));
+
+      // Clear chat after 3 seconds
+      setTimeout(() => {
+        setAgents(prev => prev.map(agent => ({
+          ...agent,
+          chatBubble: agent.chatBubble === chat.message ? null : agent.chatBubble,
+          state: agent.chatBubble === chat.message ? 'idle' as const : agent.state,
+          chatWith: agent.chatWith === chat.to ? null : agent.chatWith
+        })));
+      }, 3000);
+    }, 5000);
+
+    return () => clearInterval(interval);
   }, []);
 
   return (
-    <div className="min-h-screen bg-[#0a0a0f] text-zinc-100">
-      {/* Header */}
-      <header className="border-b border-zinc-800 bg-zinc-900/50 backdrop-blur-sm sticky top-0 z-50">
-        <div className="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <span className="text-3xl">𓂀</span>
-            <div>
-              <h1 className="text-lg font-bold text-purple-400">OSIRIS HQ</h1>
-              <p className="text-xs text-zinc-500">Command Center v1.0</p>
-            </div>
-          </div>
-          <div className="flex items-center gap-4 text-sm">
-            <div className="flex items-center gap-2">
-              <span className="w-2 h-2 bg-green-400 rounded-full animate-pulse" />
-              <span className="text-zinc-400">All Systems Online</span>
-            </div>
-            <div className="text-zinc-500">|</div>
-            <div className="text-zinc-400">
-              CVO: <span className="text-purple-400">Dominic Lutz</span>
-            </div>
-          </div>
-        </div>
-      </header>
+    <div className="min-h-screen overflow-hidden relative">
+      {/* Sky gradient */}
+      <div 
+        className="absolute inset-0"
+        style={{
+          background: 'linear-gradient(180deg, #87CEEB 0%, #98D8C8 50%, #90EE90 100%)'
+        }}
+      />
+      
+      {/* Grass texture overlay */}
+      <div 
+        className="absolute inset-0"
+        style={{
+          background: `
+            radial-gradient(circle at 20% 80%, rgba(34, 197, 94, 0.3) 0%, transparent 30%),
+            radial-gradient(circle at 80% 70%, rgba(34, 197, 94, 0.3) 0%, transparent 30%),
+            radial-gradient(circle at 50% 90%, rgba(34, 197, 94, 0.4) 0%, transparent 40%)
+          `
+        }}
+      />
 
-      {/* Main */}
-      <main className="max-w-7xl mx-auto px-4 py-6">
-        <div className="grid grid-cols-12 gap-4 h-[calc(100vh-140px)]">
-          {/* Terminal */}
-          <div className="col-span-7">
-            <Terminal 
-              logs={logs} 
-              onCommand={executeCommand}
-              inputRef={inputRef}
-            />
-          </div>
-          
-          {/* Right Panel */}
-          <div className="col-span-5 space-y-4 overflow-y-auto">
-            <MetricsPanel metrics={metrics} />
-            <AgentPanel agents={agents} activeMissions={activeMissions} />
-            <MissionQueue missions={MISSIONS} onSelect={handleMissionSelect} />
+      {/* Sun */}
+      <Sun />
+
+      {/* Clouds */}
+      <Cloud x={10} delay={0} />
+      <Cloud x={40} delay={2} />
+      <Cloud x={70} delay={4} />
+      <Cloud x={85} delay={1} />
+
+      {/* Birds */}
+      <Bird delay={0} />
+      <Bird delay={3} />
+
+      {/* Trees */}
+      <Tree x={5} y={45} size="lg" />
+      <Tree x={95} y={50} size="lg" />
+      <Tree x={8} y={85} size="md" />
+      <Tree x={92} y={80} size="md" />
+      <Tree x={3} y={65} size="sm" />
+      <Tree x={97} y={35} size="sm" />
+
+      {/* Flowers scattered around */}
+      <Flower x={12} y={55} />
+      <Flower x={88} y={45} />
+      <Flower x={25} y={85} />
+      <Flower x={75} y={90} />
+      <Flower x={45} y={95} />
+      <Flower x={60} y={88} />
+      <Flower x={35} y={50} />
+      <Flower x={65} y={45} />
+
+      {/* Stations */}
+      {STATIONS.map(station => (
+        <Station key={station.id} station={station} />
+      ))}
+
+      {/* Agents */}
+      {agents.map(agent => (
+        <Agent key={agent.id} agent={agent} />
+      ))}
+
+      {/* Title card */}
+      <div className="absolute top-4 left-4 bg-white/80 backdrop-blur-sm rounded-2xl px-6 py-3 shadow-xl border-4 border-purple-400">
+        <div className="flex items-center gap-3">
+          <span className="text-3xl">𓂀</span>
+          <div>
+            <h1 className="text-xl font-black text-purple-600">OSIRIS AI</h1>
+            <p className="text-xs text-zinc-500">The Team at Work</p>
           </div>
         </div>
-      </main>
+      </div>
+
+      {/* Stats card */}
+      <div className="absolute bottom-4 left-4 bg-white/80 backdrop-blur-sm rounded-2xl px-4 py-3 shadow-xl border-2 border-zinc-200">
+        <div className="flex items-center gap-4 text-sm">
+          <div className="text-center">
+            <p className="text-lg font-bold text-green-500">$1,750</p>
+            <p className="text-xs text-zinc-500">MRR</p>
+          </div>
+          <div className="w-px h-8 bg-zinc-300" />
+          <div className="text-center">
+            <p className="text-lg font-bold text-purple-500">2</p>
+            <p className="text-xs text-zinc-500">Clients</p>
+          </div>
+          <div className="w-px h-8 bg-zinc-300" />
+          <div className="text-center">
+            <p className="text-lg font-bold text-orange-500">6</p>
+            <p className="text-xs text-zinc-500">Agents</p>
+          </div>
+        </div>
+      </div>
+
+      {/* Made with love */}
+      <div className="absolute bottom-4 right-4 text-xs text-white/60">
+        watching your empire grow 🌱
+      </div>
+
+      {/* CSS Animations */}
+      <style jsx global>{`
+        @keyframes float {
+          0%, 100% { transform: translateY(0) translateX(0); }
+          25% { transform: translateY(-10px) translateX(5px); }
+          50% { transform: translateY(-5px) translateX(10px); }
+          75% { transform: translateY(-15px) translateX(5px); }
+        }
+        .animate-float {
+          animation: float 8s ease-in-out infinite;
+        }
+        
+        @keyframes fly {
+          0% { left: -5%; }
+          100% { left: 105%; }
+        }
+        .animate-fly {
+          animation: fly 20s linear infinite;
+        }
+        
+        @keyframes fadeIn {
+          from { opacity: 0; transform: translate(-50%, 10px); }
+          to { opacity: 1; transform: translate(-50%, 0); }
+        }
+        .animate-fadeIn {
+          animation: fadeIn 0.3s ease-out forwards;
+        }
+      `}</style>
     </div>
   );
 }
