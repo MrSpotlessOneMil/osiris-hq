@@ -1,83 +1,231 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 
-// AI Executive Team
-const executives = {
-  osiris: { name: 'Osiris', role: 'COO', emoji: '𓂀', color: '#a855f7', description: 'Coordination & Strategy' },
-  iris: { name: 'Iris', role: 'CMO', emoji: '🦞', color: '#ec4899', description: 'Content & Marketing' },
-  apollo: { name: 'Apollo', role: 'CRO', emoji: '🏹', color: '#f59e0b', description: 'Sales & Revenue' },
-  atlas: { name: 'Atlas', role: 'CPO', emoji: '🗺️', color: '#3b82f6', description: 'Product Development' },
-  horus: { name: 'Horus', role: 'CSO', emoji: '🦅', color: '#22c55e', description: 'Customer Success' },
-  thoth: { name: 'Thoth', role: 'CDO', emoji: '📊', color: '#06b6d4', description: 'Data & Analytics' },
-};
+// ============== GAME DATA ==============
 
-type ExecutiveKey = keyof typeof executives;
+const EXECUTIVES = {
+  osiris: { name: 'Osiris', role: 'COO', emoji: '𓂀', color: '#a855f7', baseEfficiency: 1.0 },
+  iris: { name: 'Iris', role: 'CMO', emoji: '🦞', color: '#ec4899', baseEfficiency: 1.0 },
+  apollo: { name: 'Apollo', role: 'CRO', emoji: '🏹', color: '#f59e0b', baseEfficiency: 1.0 },
+  atlas: { name: 'Atlas', role: 'CPO', emoji: '🗺️', color: '#3b82f6', baseEfficiency: 1.0 },
+  horus: { name: 'Horus', role: 'CSO', emoji: '🦅', color: '#22c55e', baseEfficiency: 1.0 },
+  thoth: { name: 'Thoth', role: 'CDO', emoji: '📊', color: '#06b6d4', baseEfficiency: 1.0 },
+} as const;
 
-// Types
-interface Agent {
-  id: ExecutiveKey;
-  x: number;
-  y: number;
-  status: 'working' | 'idle' | 'moving';
-  currentTask: string;
-}
+type ExecutiveKey = keyof typeof EXECUTIVES;
 
-interface Activity {
-  id: number;
+interface Task {
+  id: string;
+  name: string;
+  description: string;
   agent: ExecutiveKey;
-  action: string;
-  timestamp: Date;
+  duration: number; // seconds
+  reward: { gold?: number; xp?: number; leads?: number; reviews?: number };
+  cost: { energy: number };
+  unlocked: boolean;
 }
 
-// Agent Avatar Component
-function AgentAvatar({ agent }: { agent: Agent }) {
-  const exec = executives[agent.id];
+interface Quest {
+  id: string;
+  name: string;
+  description: string;
+  target: number;
+  current: number;
+  reward: { gold?: number; xp?: number };
+  type: 'daily' | 'weekly' | 'milestone';
+  completed: boolean;
+}
+
+interface Upgrade {
+  id: string;
+  name: string;
+  description: string;
+  agent?: ExecutiveKey;
+  cost: number;
+  effect: string;
+  purchased: boolean;
+  requires?: string;
+}
+
+interface AgentState {
+  id: ExecutiveKey;
+  level: number;
+  xp: number;
+  currentTask: Task | null;
+  taskProgress: number;
+  efficiency: number;
+}
+
+interface GameState {
+  gold: number;
+  energy: number;
+  maxEnergy: number;
+  energyRegen: number;
+  xp: number;
+  level: number;
+  leads: number;
+  clients: number;
+  reviews: number;
+  mrr: number;
+  totalEarned: number;
+  clickPower: number;
+  agents: Record<ExecutiveKey, AgentState>;
+  quests: Quest[];
+  upgrades: Upgrade[];
+  log: { message: string; timestamp: Date; type: 'success' | 'info' | 'reward' }[];
+}
+
+// ============== INITIAL STATE ==============
+
+const TASKS: Task[] = [
+  // Apollo (Sales)
+  { id: 'outbound-email', name: 'Send Outbound Emails', description: 'Blast 50 cold emails', agent: 'apollo', duration: 30, reward: { leads: 2, xp: 10 }, cost: { energy: 10 }, unlocked: true },
+  { id: 'follow-up', name: 'Follow Up Leads', description: 'Nurture warm leads', agent: 'apollo', duration: 45, reward: { leads: 1, gold: 100, xp: 15 }, cost: { energy: 15 }, unlocked: true },
+  { id: 'book-demo', name: 'Book Demo Call', description: 'Schedule a sales call', agent: 'apollo', duration: 60, reward: { gold: 250, xp: 25 }, cost: { energy: 20 }, unlocked: true },
+  { id: 'close-deal', name: 'Close Deal', description: 'Sign a new client!', agent: 'apollo', duration: 120, reward: { gold: 2000, xp: 100 }, cost: { energy: 40 }, unlocked: false },
+  
+  // Iris (Marketing)
+  { id: 'write-script', name: 'Write Video Script', description: 'Draft content for filming', agent: 'iris', duration: 25, reward: { xp: 15 }, cost: { energy: 10 }, unlocked: true },
+  { id: 'schedule-post', name: 'Schedule Content', description: 'Queue up social posts', agent: 'iris', duration: 20, reward: { xp: 10, leads: 1 }, cost: { energy: 8 }, unlocked: true },
+  { id: 'competitor-research', name: 'Spy on Competitors', description: 'Analyze what others are doing', agent: 'iris', duration: 40, reward: { xp: 20 }, cost: { energy: 12 }, unlocked: true },
+  { id: 'viral-campaign', name: 'Launch Campaign', description: 'Big marketing push', agent: 'iris', duration: 90, reward: { leads: 5, xp: 50 }, cost: { energy: 30 }, unlocked: false },
+  
+  // Horus (Customer Success)
+  { id: 'check-in', name: 'Client Check-in', description: 'Touch base with clients', agent: 'horus', duration: 20, reward: { xp: 10, reviews: 1 }, cost: { energy: 8 }, unlocked: true },
+  { id: 'request-review', name: 'Request Reviews', description: 'Ask happy customers for reviews', agent: 'horus', duration: 15, reward: { reviews: 2, xp: 10 }, cost: { energy: 5 }, unlocked: true },
+  { id: 'onboard-client', name: 'Onboard New Client', description: 'Set up a new customer', agent: 'horus', duration: 60, reward: { gold: 500, xp: 30 }, cost: { energy: 25 }, unlocked: true },
+  { id: 'save-churn', name: 'Save Churning Client', description: 'Rescue an at-risk account', agent: 'horus', duration: 45, reward: { gold: 1000, xp: 40 }, cost: { energy: 20 }, unlocked: false },
+  
+  // Thoth (Data)
+  { id: 'daily-report', name: 'Generate Report', description: 'Compile daily metrics', agent: 'thoth', duration: 15, reward: { xp: 10 }, cost: { energy: 5 }, unlocked: true },
+  { id: 'analyze-funnel', name: 'Analyze Funnel', description: 'Find conversion leaks', agent: 'thoth', duration: 30, reward: { xp: 20, gold: 100 }, cost: { energy: 10 }, unlocked: true },
+  { id: 'forecast', name: 'Revenue Forecast', description: 'Predict next month', agent: 'thoth', duration: 40, reward: { xp: 25 }, cost: { energy: 15 }, unlocked: true },
+  
+  // Atlas (Product)
+  { id: 'fix-bug', name: 'Fix Bug', description: 'Squash a reported issue', agent: 'atlas', duration: 35, reward: { xp: 15 }, cost: { energy: 12 }, unlocked: true },
+  { id: 'ship-feature', name: 'Ship Feature', description: 'Deploy new functionality', agent: 'atlas', duration: 60, reward: { xp: 40, gold: 200 }, cost: { energy: 25 }, unlocked: true },
+  { id: 'sync-jack', name: 'Sync with Jack', description: 'Coordinate with dev lead', agent: 'atlas', duration: 20, reward: { xp: 10 }, cost: { energy: 8 }, unlocked: true },
+  
+  // Osiris (Coordination)
+  { id: 'morning-brief', name: 'Morning Brief', description: 'Align the team for the day', agent: 'osiris', duration: 15, reward: { xp: 15 }, cost: { energy: 5 }, unlocked: true },
+  { id: 'strategic-planning', name: 'Strategic Planning', description: 'Plot world domination', agent: 'osiris', duration: 45, reward: { xp: 30, gold: 150 }, cost: { energy: 15 }, unlocked: true },
+  { id: 'team-boost', name: 'Boost Team', description: '+50% efficiency for 2 min', agent: 'osiris', duration: 30, reward: { xp: 20 }, cost: { energy: 20 }, unlocked: true },
+];
+
+const INITIAL_QUESTS: Quest[] = [
+  { id: 'daily-leads', name: 'Lead Hunter', description: 'Generate 5 leads today', target: 5, current: 0, reward: { gold: 500, xp: 50 }, type: 'daily', completed: false },
+  { id: 'daily-reviews', name: 'Review Collector', description: 'Get 3 reviews today', target: 3, current: 0, reward: { gold: 300, xp: 30 }, type: 'daily', completed: false },
+  { id: 'weekly-client', name: 'Empire Expansion', description: 'Sign 1 new client this week', target: 1, current: 0, reward: { gold: 2000, xp: 200 }, type: 'weekly', completed: false },
+  { id: 'milestone-mrr', name: 'First $5K MRR', description: 'Reach $5,000 monthly recurring', target: 5000, current: 1750, reward: { gold: 5000, xp: 500 }, type: 'milestone', completed: false },
+  { id: 'milestone-clients', name: '10 Client Club', description: 'Sign 10 total clients', target: 10, current: 2, reward: { gold: 10000, xp: 1000 }, type: 'milestone', completed: false },
+];
+
+const INITIAL_UPGRADES: Upgrade[] = [
+  { id: 'click-power-1', name: 'Better Clicking', description: '+1 gold per click', cost: 100, effect: 'clickPower', purchased: false },
+  { id: 'click-power-2', name: 'Power Clicking', description: '+5 gold per click', cost: 500, effect: 'clickPower', purchased: false, requires: 'click-power-1' },
+  { id: 'energy-max-1', name: 'Energy Tank I', description: '+25 max energy', cost: 300, effect: 'maxEnergy', purchased: false },
+  { id: 'energy-max-2', name: 'Energy Tank II', description: '+50 max energy', cost: 800, effect: 'maxEnergy', purchased: false, requires: 'energy-max-1' },
+  { id: 'energy-regen-1', name: 'Energy Regen I', description: '+1 energy/sec', cost: 400, effect: 'energyRegen', purchased: false },
+  { id: 'apollo-boost', name: 'Apollo Training', description: '+25% Apollo efficiency', cost: 1000, effect: 'agentBoost', agent: 'apollo', purchased: false },
+  { id: 'iris-boost', name: 'Iris Training', description: '+25% Iris efficiency', cost: 1000, effect: 'agentBoost', agent: 'iris', purchased: false },
+  { id: 'horus-boost', name: 'Horus Training', description: '+25% Horus efficiency', cost: 1000, effect: 'agentBoost', agent: 'horus', purchased: false },
+  { id: 'unlock-close-deal', name: 'Sales Mastery', description: 'Unlock "Close Deal" task', cost: 2000, effect: 'unlockTask', purchased: false },
+  { id: 'unlock-viral', name: 'Viral Marketing', description: 'Unlock "Launch Campaign" task', cost: 1500, effect: 'unlockTask', purchased: false },
+  { id: 'auto-outbound', name: 'Auto Outbound', description: 'Apollo sends emails automatically', cost: 5000, effect: 'autoTask', agent: 'apollo', purchased: false },
+];
+
+const getInitialState = (): GameState => ({
+  gold: 500,
+  energy: 100,
+  maxEnergy: 100,
+  energyRegen: 1,
+  xp: 0,
+  level: 1,
+  leads: 3,
+  clients: 2,
+  reviews: 12,
+  mrr: 1750,
+  totalEarned: 0,
+  clickPower: 1,
+  agents: {
+    osiris: { id: 'osiris', level: 1, xp: 0, currentTask: null, taskProgress: 0, efficiency: 1.0 },
+    iris: { id: 'iris', level: 1, xp: 0, currentTask: null, taskProgress: 0, efficiency: 1.0 },
+    apollo: { id: 'apollo', level: 1, xp: 0, currentTask: null, taskProgress: 0, efficiency: 1.0 },
+    atlas: { id: 'atlas', level: 1, xp: 0, currentTask: null, taskProgress: 0, efficiency: 1.0 },
+    horus: { id: 'horus', level: 1, xp: 0, currentTask: null, taskProgress: 0, efficiency: 1.0 },
+    thoth: { id: 'thoth', level: 1, xp: 0, currentTask: null, taskProgress: 0, efficiency: 1.0 },
+  },
+  quests: INITIAL_QUESTS,
+  upgrades: INITIAL_UPGRADES,
+  log: [{ message: 'Welcome, CVO. Your empire awaits.', timestamp: new Date(), type: 'info' }],
+});
+
+// ============== COMPONENTS ==============
+
+function ResourceBar({ game }: { game: GameState }) {
+  const xpForNextLevel = game.level * 100;
+  const xpProgress = (game.xp / xpForNextLevel) * 100;
   
   return (
-    <div
-      className="absolute transition-all duration-1000 ease-in-out z-20 cursor-pointer group"
-      style={{
-        left: `${agent.x}%`,
-        top: `${agent.y}%`,
-        transform: 'translate(-50%, -50%)'
-      }}
-    >
-      <div className={`relative ${agent.status === 'moving' ? 'animate-bounce' : ''}`}>
-        {/* Glow effect when working */}
-        {agent.status === 'working' && (
-          <div 
-            className="absolute inset-0 rounded-full blur-md animate-pulse"
-            style={{ backgroundColor: exec.color, opacity: 0.4, transform: 'scale(1.5)' }}
-          />
-        )}
-        
-        {/* Avatar */}
-        <div 
-          className="relative w-12 h-12 rounded-full flex items-center justify-center text-2xl shadow-lg border-2"
-          style={{ 
-            backgroundColor: `${exec.color}20`,
-            borderColor: exec.color,
-            boxShadow: agent.status === 'working' ? `0 0 20px ${exec.color}` : 'none'
-          }}
-        >
-          {exec.emoji}
+    <div className="bg-zinc-900/90 backdrop-blur-md border-b border-zinc-800 px-4 py-3 sticky top-0 z-50">
+      <div className="max-w-7xl mx-auto flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <span className="text-3xl">𓂀</span>
+          <div>
+            <h1 className="text-xl font-black text-purple-400">OSIRIS HQ</h1>
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-zinc-500">Level {game.level}</span>
+              <div className="w-20 h-1.5 bg-zinc-700 rounded-full overflow-hidden">
+                <div className="h-full bg-purple-500 transition-all" style={{ width: `${xpProgress}%` }} />
+              </div>
+              <span className="text-xs text-zinc-500">{game.xp}/{xpForNextLevel} XP</span>
+            </div>
+          </div>
         </div>
         
-        {/* Status indicator */}
-        <div 
-          className={`absolute -bottom-1 -right-1 w-4 h-4 rounded-full border-2 border-zinc-900 ${
-            agent.status === 'working' ? 'bg-green-400 animate-pulse' : 
-            agent.status === 'moving' ? 'bg-yellow-400' : 'bg-zinc-500'
-          }`}
-        />
-        
-        {/* Tooltip */}
-        <div className="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
-          <div className="bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 whitespace-nowrap">
-            <p className="font-bold text-sm" style={{ color: exec.color }}>{exec.name}</p>
-            <p className="text-xs text-zinc-400">{exec.role} • {exec.description}</p>
-            <p className="text-xs text-zinc-500 mt-1">{agent.currentTask}</p>
+        <div className="flex items-center gap-6">
+          <div className="flex items-center gap-2">
+            <span className="text-xl">💰</span>
+            <div>
+              <p className="text-xs text-zinc-500">Gold</p>
+              <p className="font-bold text-yellow-400">{game.gold.toLocaleString()}</p>
+            </div>
+          </div>
+          
+          <div className="flex items-center gap-2">
+            <span className="text-xl">⚡</span>
+            <div>
+              <p className="text-xs text-zinc-500">Energy</p>
+              <div className="flex items-center gap-1">
+                <p className="font-bold text-blue-400">{Math.floor(game.energy)}</p>
+                <span className="text-xs text-zinc-500">/ {game.maxEnergy}</span>
+              </div>
+            </div>
+          </div>
+          
+          <div className="flex items-center gap-2">
+            <span className="text-xl">📈</span>
+            <div>
+              <p className="text-xs text-zinc-500">MRR</p>
+              <p className="font-bold text-green-400">${game.mrr.toLocaleString()}</p>
+            </div>
+          </div>
+          
+          <div className="flex items-center gap-2">
+            <span className="text-xl">🎯</span>
+            <div>
+              <p className="text-xs text-zinc-500">Leads</p>
+              <p className="font-bold text-orange-400">{game.leads}</p>
+            </div>
+          </div>
+          
+          <div className="flex items-center gap-2">
+            <span className="text-xl">🏢</span>
+            <div>
+              <p className="text-xs text-zinc-500">Clients</p>
+              <p className="font-bold text-purple-400">{game.clients}</p>
+            </div>
           </div>
         </div>
       </div>
@@ -85,88 +233,127 @@ function AgentAvatar({ agent }: { agent: Agent }) {
   );
 }
 
-// Station Component
-function Station({ 
-  exec,
-  x, 
-  y, 
-  metrics
+function AgentCard({ 
+  agent, 
+  exec, 
+  tasks,
+  onAssignTask,
+  energy
 }: { 
-  exec: typeof executives[ExecutiveKey];
-  x: number;
-  y: number;
-  metrics: { label: string; value: string }[];
+  agent: AgentState;
+  exec: typeof EXECUTIVES[ExecutiveKey];
+  tasks: Task[];
+  onAssignTask: (task: Task) => void;
+  energy: number;
 }) {
+  const availableTasks = tasks.filter(t => t.agent === agent.id && t.unlocked);
+  
   return (
-    <div
-      className="absolute transform -translate-x-1/2 -translate-y-1/2 z-10"
-      style={{ left: `${x}%`, top: `${y}%` }}
+    <div 
+      className="bg-zinc-900/80 rounded-xl border border-zinc-800 p-4 hover:border-purple-500/30 transition-all"
+      style={{ borderColor: agent.currentTask ? exec.color + '50' : undefined }}
     >
-      {/* Station platform */}
-      <div 
-        className="relative p-4 rounded-xl border backdrop-blur-sm min-w-[140px]"
-        style={{ 
-          backgroundColor: `${exec.color}10`,
-          borderColor: `${exec.color}40`,
-          boxShadow: `0 0 30px ${exec.color}20`
-        }}
-      >
-        <div className="text-center mb-3">
-          <p className="text-xs font-bold text-zinc-400 uppercase tracking-wider">{exec.role}</p>
-          <p className="font-bold" style={{ color: exec.color }}>{exec.name}</p>
+      <div className="flex items-center gap-3 mb-3">
+        <div 
+          className="w-12 h-12 rounded-full flex items-center justify-center text-2xl border-2"
+          style={{ borderColor: exec.color, backgroundColor: exec.color + '20' }}
+        >
+          {exec.emoji}
         </div>
-        
+        <div>
+          <p className="font-bold" style={{ color: exec.color }}>{exec.name}</p>
+          <p className="text-xs text-zinc-500">{exec.role} • Lvl {agent.level}</p>
+        </div>
+        <div className="ml-auto">
+          {agent.currentTask ? (
+            <span className="text-xs bg-green-500/20 text-green-400 px-2 py-1 rounded-full">Working</span>
+          ) : (
+            <span className="text-xs bg-zinc-700 text-zinc-400 px-2 py-1 rounded-full">Idle</span>
+          )}
+        </div>
+      </div>
+      
+      {agent.currentTask ? (
+        <div className="bg-zinc-800/50 rounded-lg p-3">
+          <div className="flex justify-between items-center mb-2">
+            <span className="text-sm font-medium">{agent.currentTask.name}</span>
+            <span className="text-xs text-zinc-500">{Math.ceil((agent.currentTask.duration * (1 - agent.taskProgress)) / agent.efficiency)}s</span>
+          </div>
+          <div className="w-full h-2 bg-zinc-700 rounded-full overflow-hidden">
+            <div 
+              className="h-full transition-all duration-200"
+              style={{ width: `${agent.taskProgress * 100}%`, backgroundColor: exec.color }}
+            />
+          </div>
+        </div>
+      ) : (
         <div className="space-y-2">
-          {metrics.map((m, i) => (
-            <div key={i} className="flex justify-between items-center text-xs">
-              <span className="text-zinc-500">{m.label}</span>
-              <span className="font-mono font-bold text-white">{m.value}</span>
-            </div>
+          {availableTasks.slice(0, 3).map(task => (
+            <button
+              key={task.id}
+              onClick={() => onAssignTask(task)}
+              disabled={energy < task.cost.energy}
+              className={`w-full text-left p-2 rounded-lg border transition-all ${
+                energy >= task.cost.energy 
+                  ? 'border-zinc-700 hover:border-purple-500/50 hover:bg-purple-500/10 cursor-pointer' 
+                  : 'border-zinc-800 opacity-50 cursor-not-allowed'
+              }`}
+            >
+              <div className="flex justify-between items-center">
+                <span className="text-sm font-medium">{task.name}</span>
+                <span className="text-xs text-blue-400">⚡{task.cost.energy}</span>
+              </div>
+              <div className="flex gap-2 mt-1">
+                {task.reward.gold && <span className="text-xs text-yellow-400">+{task.reward.gold}💰</span>}
+                {task.reward.leads && <span className="text-xs text-orange-400">+{task.reward.leads}🎯</span>}
+                {task.reward.xp && <span className="text-xs text-purple-400">+{task.reward.xp}⭐</span>}
+              </div>
+            </button>
           ))}
         </div>
-      </div>
+      )}
     </div>
   );
 }
 
-// Resource Counter
-function ResourceCounter({ icon, label, value, color, subtext }: { 
-  icon: string; 
-  label: string; 
-  value: string; 
-  color: string;
-  subtext?: string;
-}) {
+function QuestPanel({ quests, onClaim }: { quests: Quest[]; onClaim: (quest: Quest) => void }) {
   return (
-    <div className={`flex items-center gap-3 bg-zinc-900/80 backdrop-blur-sm px-4 py-3 rounded-xl border ${color}`}>
-      <span className="text-2xl">{icon}</span>
-      <div>
-        <p className="text-xs text-zinc-500 uppercase tracking-wider">{label}</p>
-        <p className="font-bold text-white text-lg">{value}</p>
-        {subtext && <p className="text-xs text-zinc-500">{subtext}</p>}
-      </div>
-    </div>
-  );
-}
-
-// Activity Feed
-function ActivityFeed({ activities }: { activities: Activity[] }) {
-  return (
-    <div className="bg-zinc-900/60 backdrop-blur-sm rounded-xl border border-zinc-800 p-4 h-full">
-      <h3 className="text-sm font-bold text-zinc-300 mb-3 flex items-center gap-2">
-        <span className="w-2 h-2 bg-green-400 rounded-full animate-pulse" />
-        Team Activity
+    <div className="bg-zinc-900/80 rounded-xl border border-zinc-800 p-4">
+      <h3 className="font-bold text-zinc-300 mb-3 flex items-center gap-2">
+        🏆 Quests
       </h3>
-      <div className="space-y-2 max-h-[280px] overflow-y-auto">
-        {activities.map((activity) => {
-          const exec = executives[activity.agent];
+      <div className="space-y-2">
+        {quests.filter(q => !q.completed).slice(0, 4).map(quest => {
+          const progress = (quest.current / quest.target) * 100;
+          const isComplete = quest.current >= quest.target;
+          
           return (
-            <div key={activity.id} className="flex items-start gap-2 text-sm animate-fadeIn py-2 border-b border-zinc-800/50 last:border-0">
-              <span>{exec.emoji}</span>
-              <div>
-                <span className="font-medium" style={{ color: exec.color }}>{exec.name}</span>
-                <span className="text-zinc-400"> {activity.action}</span>
+            <div key={quest.id} className={`p-3 rounded-lg border ${isComplete ? 'border-green-500/50 bg-green-500/10' : 'border-zinc-700'}`}>
+              <div className="flex justify-between items-start mb-1">
+                <div>
+                  <p className="text-sm font-medium">{quest.name}</p>
+                  <p className="text-xs text-zinc-500">{quest.description}</p>
+                </div>
+                <span className={`text-xs px-2 py-0.5 rounded ${
+                  quest.type === 'daily' ? 'bg-blue-500/20 text-blue-400' :
+                  quest.type === 'weekly' ? 'bg-purple-500/20 text-purple-400' :
+                  'bg-yellow-500/20 text-yellow-400'
+                }`}>{quest.type}</span>
               </div>
+              <div className="flex items-center gap-2 mt-2">
+                <div className="flex-1 h-1.5 bg-zinc-700 rounded-full overflow-hidden">
+                  <div className="h-full bg-green-500 transition-all" style={{ width: `${Math.min(progress, 100)}%` }} />
+                </div>
+                <span className="text-xs text-zinc-400">{quest.current}/{quest.target}</span>
+              </div>
+              {isComplete && (
+                <button 
+                  onClick={() => onClaim(quest)}
+                  className="w-full mt-2 bg-green-600 hover:bg-green-500 text-white text-sm py-1.5 rounded-lg font-medium transition-colors"
+                >
+                  Claim Reward! +{quest.reward.gold}💰 +{quest.reward.xp}⭐
+                </button>
+              )}
             </div>
           );
         })}
@@ -175,380 +362,322 @@ function ActivityFeed({ activities }: { activities: Activity[] }) {
   );
 }
 
-// Client Card
-function ClientCard({ name, mrr, health, agentAssigned }: { 
-  name: string; 
-  mrr: string; 
-  health: 'excellent' | 'good' | 'attention';
-  agentAssigned: ExecutiveKey;
-}) {
-  const exec = executives[agentAssigned];
-  const healthColors = {
-    excellent: 'bg-green-400',
-    good: 'bg-blue-400',
-    attention: 'bg-yellow-400'
-  };
-
+function UpgradeShop({ upgrades, gold, onBuy }: { upgrades: Upgrade[]; gold: number; onBuy: (upgrade: Upgrade) => void }) {
+  const available = upgrades.filter(u => !u.purchased && (!u.requires || upgrades.find(up => up.id === u.requires)?.purchased));
+  
   return (
-    <div className="bg-zinc-900/60 rounded-lg p-3 border border-zinc-800 hover:border-purple-500/50 transition-all">
-      <div className="flex items-center justify-between mb-2">
-        <span className="font-medium">{name}</span>
-        <div className={`w-2 h-2 rounded-full ${healthColors[health]}`} />
-      </div>
-      <div className="flex items-center justify-between">
-        <span className="text-green-400 font-bold">{mrr}</span>
-        <div className="flex items-center gap-1 text-xs text-zinc-500">
-          <span>{exec.emoji}</span>
-          <span>{exec.name}</span>
-        </div>
+    <div className="bg-zinc-900/80 rounded-xl border border-zinc-800 p-4">
+      <h3 className="font-bold text-zinc-300 mb-3 flex items-center gap-2">
+        🔧 Upgrades
+      </h3>
+      <div className="space-y-2 max-h-[300px] overflow-y-auto">
+        {available.slice(0, 5).map(upgrade => (
+          <button
+            key={upgrade.id}
+            onClick={() => onBuy(upgrade)}
+            disabled={gold < upgrade.cost}
+            className={`w-full text-left p-3 rounded-lg border transition-all ${
+              gold >= upgrade.cost
+                ? 'border-zinc-700 hover:border-yellow-500/50 hover:bg-yellow-500/5 cursor-pointer'
+                : 'border-zinc-800 opacity-50 cursor-not-allowed'
+            }`}
+          >
+            <div className="flex justify-between items-start">
+              <div>
+                <p className="text-sm font-medium">{upgrade.name}</p>
+                <p className="text-xs text-zinc-500">{upgrade.description}</p>
+              </div>
+              <span className="text-sm text-yellow-400 font-bold">{upgrade.cost}💰</span>
+            </div>
+          </button>
+        ))}
       </div>
     </div>
   );
 }
 
-// Command Bar
-function CommandBar() {
-  const [query, setQuery] = useState('');
-  const [response, setResponse] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
-  const [respondingAgent, setRespondingAgent] = useState<ExecutiveKey | null>(null);
+function ActivityLog({ log }: { log: GameState['log'] }) {
+  return (
+    <div className="bg-zinc-900/80 rounded-xl border border-zinc-800 p-4">
+      <h3 className="font-bold text-zinc-300 mb-3 flex items-center gap-2">
+        📜 Activity Log
+      </h3>
+      <div className="space-y-1 max-h-[200px] overflow-y-auto">
+        {log.slice(0, 10).map((entry, i) => (
+          <p key={i} className={`text-xs ${
+            entry.type === 'success' ? 'text-green-400' :
+            entry.type === 'reward' ? 'text-yellow-400' :
+            'text-zinc-400'
+          }`}>
+            {entry.message}
+          </p>
+        ))}
+      </div>
+    </div>
+  );
+}
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!query.trim()) return;
+function ClickerArea({ onClick, clickPower }: { onClick: () => void; clickPower: number }) {
+  const [clicks, setClicks] = useState<{ id: number; x: number; y: number }[]>([]);
+  
+  const handleClick = (e: React.MouseEvent) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
     
-    setIsLoading(true);
-    
-    // Determine which agent should respond
-    const q = query.toLowerCase();
-    let agent: ExecutiveKey = 'osiris';
-    if (q.includes('content') || q.includes('social') || q.includes('marketing')) agent = 'iris';
-    else if (q.includes('sales') || q.includes('lead') || q.includes('outbound') || q.includes('revenue')) agent = 'apollo';
-    else if (q.includes('product') || q.includes('feature') || q.includes('build')) agent = 'atlas';
-    else if (q.includes('customer') || q.includes('review') || q.includes('retention')) agent = 'horus';
-    else if (q.includes('data') || q.includes('metric') || q.includes('analytics')) agent = 'thoth';
-    
-    setRespondingAgent(agent);
+    setClicks(prev => [...prev, { id: Date.now(), x, y }]);
+    onClick();
     
     setTimeout(() => {
-      const responses: Record<ExecutiveKey, string> = {
-        osiris: "All systems nominal. WinBros conversion at 67%, Cedar Rapids ramping up. Apollo has 15 leads in pipeline, Iris scheduled 3 posts for tomorrow. Recommend we focus on closing the Des Moines prospect this week.",
-        iris: "Content performance: Last Reel hit 2.3K views. Scripts ready for tomorrow's filming session. Competitor Housecall Pro just posted about their AI — I'm drafting a response video positioning us as founder-built, not corporate.",
-        apollo: "Pipeline status: 15 warm leads, 3 qualified, 2 demo calls scheduled this week. Top prospect: Des Moines Cleaning Co ($3K MRR potential). Outbound campaign sent 47 emails today, 12% open rate.",
-        atlas: "Product roadmap: Multi-tenant dashboard 60% complete. Jack pushed pricing engine update yesterday. Priority bug: Cedar Rapids timezone offset on calendar sync. ETA fix: tomorrow.",
-        horus: "Customer health: WinBros green across all metrics. Cedar Rapids had 1 missed callback — followed up, resolved. Review request sent to 5 completed jobs, expecting 3 new 5-stars this week.",
-        thoth: "Key metrics: $1,750 MRR (+15% MoM), 67% call-to-booking conversion, $425 avg job value. Anomaly detected: WinBros call volume up 23% — likely seasonal. Forecast: $2,100 MRR by month end."
-      };
-      
-      setResponse(responses[agent]);
-      setIsLoading(false);
-    }, 1500);
-    
-    setQuery('');
+      setClicks(prev => prev.slice(1));
+    }, 1000);
   };
-
-  const exec = respondingAgent ? executives[respondingAgent] : executives.osiris;
-
+  
   return (
-    <div className="bg-zinc-900/80 backdrop-blur-md rounded-2xl border border-purple-500/30 p-4 shadow-2xl">
-      <form onSubmit={handleSubmit} className="flex items-center gap-3">
-        <span className="text-2xl">𓂀</span>
-        <input
-          type="text"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="Ask your team anything... (try 'sales pipeline' or 'content performance')"
-          className="flex-1 bg-transparent border-none outline-none text-white placeholder:text-zinc-500"
-        />
-        <button 
-          type="submit"
-          className="bg-purple-600 hover:bg-purple-500 px-5 py-2 rounded-lg text-sm font-medium transition-colors"
-        >
-          Ask
-        </button>
-      </form>
+    <div 
+      onClick={handleClick}
+      className="relative bg-gradient-to-br from-purple-900/20 to-zinc-900/40 rounded-2xl border border-purple-500/30 p-8 cursor-pointer hover:border-purple-500/50 transition-all active:scale-[0.98] select-none overflow-hidden"
+    >
+      <div className="text-center">
+        <div className="text-6xl mb-4 hover:scale-110 transition-transform">𓂀</div>
+        <p className="text-zinc-400 text-sm">Click to earn gold</p>
+        <p className="text-yellow-400 font-bold">+{clickPower} 💰 per click</p>
+      </div>
       
-      {(isLoading || response) && (
-        <div className="mt-4 pt-4 border-t border-zinc-700/50">
-          {isLoading ? (
-            <div className="flex items-center gap-2">
-              <span className="text-xl">{exec.emoji}</span>
-              <div className="flex gap-1">
-                <div className="w-2 h-2 rounded-full animate-bounce" style={{ backgroundColor: exec.color, animationDelay: '0ms' }} />
-                <div className="w-2 h-2 rounded-full animate-bounce" style={{ backgroundColor: exec.color, animationDelay: '150ms' }} />
-                <div className="w-2 h-2 rounded-full animate-bounce" style={{ backgroundColor: exec.color, animationDelay: '300ms' }} />
-              </div>
-              <span className="text-sm text-zinc-400">{exec.name} is analyzing...</span>
-            </div>
-          ) : (
-            <div className="flex gap-3">
-              <span className="text-xl">{exec.emoji}</span>
-              <div>
-                <p className="text-xs font-bold mb-1" style={{ color: exec.color }}>{exec.name} ({exec.role})</p>
-                <p className="text-sm text-zinc-300 leading-relaxed">{response}</p>
-              </div>
-            </div>
-          )}
+      {/* Floating numbers */}
+      {clicks.map(click => (
+        <div
+          key={click.id}
+          className="absolute text-yellow-400 font-bold text-lg pointer-events-none animate-float-up"
+          style={{ left: click.x, top: click.y }}
+        >
+          +{clickPower}
         </div>
-      )}
+      ))}
+      
+      <style jsx>{`
+        @keyframes float-up {
+          0% { opacity: 1; transform: translateY(0); }
+          100% { opacity: 0; transform: translateY(-50px); }
+        }
+        .animate-float-up {
+          animation: float-up 1s ease-out forwards;
+        }
+      `}</style>
     </div>
   );
 }
 
-export default function Dashboard() {
-  const [agents, setAgents] = useState<Agent[]>([
-    { id: 'osiris', x: 50, y: 20, status: 'working', currentTask: 'Coordinating team operations' },
-    { id: 'iris', x: 20, y: 40, status: 'working', currentTask: 'Scheduling content posts' },
-    { id: 'apollo', x: 80, y: 40, status: 'working', currentTask: 'Following up on leads' },
-    { id: 'atlas', x: 20, y: 70, status: 'idle', currentTask: 'Reviewing PRD updates' },
-    { id: 'horus', x: 80, y: 70, status: 'working', currentTask: 'Sending review requests' },
-    { id: 'thoth', x: 50, y: 85, status: 'working', currentTask: 'Generating daily report' },
-  ]);
+// ============== MAIN GAME ==============
 
-  const [activities, setActivities] = useState<Activity[]>([
-    { id: 1, agent: 'apollo', action: 'qualified a new lead from Cedar Rapids', timestamp: new Date() },
-    { id: 2, agent: 'horus', action: 'received 5-star review for WinBros', timestamp: new Date() },
-    { id: 3, agent: 'iris', action: 'scheduled tomorrow\'s content post', timestamp: new Date() },
-    { id: 4, agent: 'thoth', action: 'detected 23% call volume increase', timestamp: new Date() },
-    { id: 5, agent: 'osiris', action: 'updated morning brief for Dominic', timestamp: new Date() },
-    { id: 6, agent: 'atlas', action: 'synced with Jack on pricing engine', timestamp: new Date() },
-  ]);
-
-  // Animate agents
+export default function Game() {
+  const [game, setGame] = useState<GameState>(getInitialState);
+  const [tasks] = useState<Task[]>(TASKS);
+  
+  // Energy regeneration
   useEffect(() => {
     const interval = setInterval(() => {
-      setAgents(prev => prev.map(agent => {
-        if (Math.random() > 0.7) {
-          const statuses: Agent['status'][] = ['working', 'working', 'working', 'idle', 'moving'];
-          const tasks: Record<ExecutiveKey, string[]> = {
-            osiris: ['Coordinating team operations', 'Preparing briefing', 'Reviewing metrics', 'Strategic planning'],
-            iris: ['Scheduling content posts', 'Writing video script', 'Analyzing engagement', 'Monitoring competitors'],
-            apollo: ['Following up on leads', 'Sending outbound emails', 'Scheduling demo call', 'Updating pipeline'],
-            atlas: ['Reviewing PRD updates', 'Testing new feature', 'Bug triage', 'Syncing with Jack'],
-            horus: ['Sending review requests', 'Customer check-in', 'Resolving support ticket', 'Onboarding new client'],
-            thoth: ['Generating daily report', 'Analyzing conversion data', 'Forecasting MRR', 'Detecting anomalies'],
-          };
-          
-          return {
-            ...agent,
-            x: agent.x + (Math.random() - 0.5) * 8,
-            y: agent.y + (Math.random() - 0.5) * 8,
-            status: statuses[Math.floor(Math.random() * statuses.length)],
-            currentTask: tasks[agent.id][Math.floor(Math.random() * tasks[agent.id].length)]
-          };
-        }
-        return agent;
+      setGame(prev => ({
+        ...prev,
+        energy: Math.min(prev.energy + prev.energyRegen * 0.1, prev.maxEnergy)
       }));
-    }, 4000);
-
+    }, 100);
     return () => clearInterval(interval);
   }, []);
-
-  // Add new activities
+  
+  // Task progression
   useEffect(() => {
-    const newActivities: { agent: ExecutiveKey; action: string }[] = [
-      { agent: 'apollo', action: 'sent follow-up to warm lead' },
-      { agent: 'horus', action: 'completed customer check-in call' },
-      { agent: 'iris', action: 'drafted new video hook' },
-      { agent: 'thoth', action: 'updated conversion metrics' },
-      { agent: 'osiris', action: 'synced priorities with team' },
-      { agent: 'atlas', action: 'pushed code update to staging' },
-      { agent: 'apollo', action: 'booked demo call for Thursday' },
-      { agent: 'horus', action: 'sent review request to 3 customers' },
-    ];
-
     const interval = setInterval(() => {
-      const activity = newActivities[Math.floor(Math.random() * newActivities.length)];
-      setActivities(prev => [{
-        id: Date.now(),
-        ...activity,
-        timestamp: new Date()
-      }, ...prev.slice(0, 7)]);
-    }, 6000);
-
+      setGame(prev => {
+        const newAgents = { ...prev.agents };
+        let newGold = prev.gold;
+        let newXp = prev.xp;
+        let newLeads = prev.leads;
+        let newReviews = prev.reviews;
+        const newLog = [...prev.log];
+        let newQuests = [...prev.quests];
+        
+        Object.keys(newAgents).forEach(key => {
+          const agentKey = key as ExecutiveKey;
+          const agent = newAgents[agentKey];
+          
+          if (agent.currentTask) {
+            const progressIncrement = (1 / agent.currentTask.duration) * agent.efficiency;
+            agent.taskProgress += progressIncrement;
+            
+            if (agent.taskProgress >= 1) {
+              // Task complete!
+              const task = agent.currentTask;
+              if (task.reward.gold) newGold += task.reward.gold;
+              if (task.reward.xp) newXp += task.reward.xp;
+              if (task.reward.leads) newLeads += task.reward.leads;
+              if (task.reward.reviews) newReviews += task.reward.reviews;
+              
+              newLog.unshift({
+                message: `${EXECUTIVES[agentKey].name} completed "${task.name}"!`,
+                timestamp: new Date(),
+                type: 'success'
+              });
+              
+              // Update quest progress
+              if (task.reward.leads) {
+                newQuests = newQuests.map(q => 
+                  q.id === 'daily-leads' ? { ...q, current: q.current + (task.reward.leads || 0) } : q
+                );
+              }
+              if (task.reward.reviews) {
+                newQuests = newQuests.map(q => 
+                  q.id === 'daily-reviews' ? { ...q, current: q.current + (task.reward.reviews || 0) } : q
+                );
+              }
+              
+              agent.currentTask = null;
+              agent.taskProgress = 0;
+            }
+          }
+        });
+        
+        // Level up check
+        let newLevel = prev.level;
+        const xpNeeded = prev.level * 100;
+        if (newXp >= xpNeeded) {
+          newXp -= xpNeeded;
+          newLevel += 1;
+          newLog.unshift({
+            message: `🎉 LEVEL UP! You are now level ${newLevel}!`,
+            timestamp: new Date(),
+            type: 'reward'
+          });
+        }
+        
+        return {
+          ...prev,
+          agents: newAgents,
+          gold: newGold,
+          xp: newXp,
+          level: newLevel,
+          leads: newLeads,
+          reviews: newReviews,
+          quests: newQuests,
+          log: newLog.slice(0, 50)
+        };
+      });
+    }, 1000);
     return () => clearInterval(interval);
   }, []);
-
+  
+  const handleClick = useCallback(() => {
+    setGame(prev => ({
+      ...prev,
+      gold: prev.gold + prev.clickPower,
+      totalEarned: prev.totalEarned + prev.clickPower
+    }));
+  }, []);
+  
+  const handleAssignTask = useCallback((task: Task) => {
+    setGame(prev => {
+      if (prev.energy < task.cost.energy) return prev;
+      
+      const newAgents = { ...prev.agents };
+      newAgents[task.agent] = {
+        ...newAgents[task.agent],
+        currentTask: task,
+        taskProgress: 0
+      };
+      
+      return {
+        ...prev,
+        agents: newAgents,
+        energy: prev.energy - task.cost.energy,
+        log: [{
+          message: `${EXECUTIVES[task.agent].name} started "${task.name}"`,
+          timestamp: new Date(),
+          type: 'info'
+        }, ...prev.log].slice(0, 50)
+      };
+    });
+  }, []);
+  
+  const handleClaimQuest = useCallback((quest: Quest) => {
+    setGame(prev => ({
+      ...prev,
+      gold: prev.gold + (quest.reward.gold || 0),
+      xp: prev.xp + (quest.reward.xp || 0),
+      quests: prev.quests.map(q => q.id === quest.id ? { ...q, completed: true } : q),
+      log: [{
+        message: `🏆 Quest complete: "${quest.name}"! +${quest.reward.gold}💰 +${quest.reward.xp}⭐`,
+        timestamp: new Date(),
+        type: 'reward'
+      }, ...prev.log].slice(0, 50)
+    }));
+  }, []);
+  
+  const handleBuyUpgrade = useCallback((upgrade: Upgrade) => {
+    setGame(prev => {
+      if (prev.gold < upgrade.cost) return prev;
+      
+      let newState = {
+        ...prev,
+        gold: prev.gold - upgrade.cost,
+        upgrades: prev.upgrades.map(u => u.id === upgrade.id ? { ...u, purchased: true } : u),
+        log: [{
+          message: `🔧 Purchased "${upgrade.name}"!`,
+          timestamp: new Date(),
+          type: 'reward'
+        }, ...prev.log].slice(0, 50)
+      };
+      
+      // Apply upgrade effects
+      if (upgrade.effect === 'clickPower') {
+        newState.clickPower = prev.clickPower + (upgrade.id.includes('2') ? 5 : 1);
+      } else if (upgrade.effect === 'maxEnergy') {
+        newState.maxEnergy = prev.maxEnergy + (upgrade.id.includes('2') ? 50 : 25);
+      } else if (upgrade.effect === 'energyRegen') {
+        newState.energyRegen = prev.energyRegen + 1;
+      } else if (upgrade.effect === 'agentBoost' && upgrade.agent) {
+        newState.agents = {
+          ...prev.agents,
+          [upgrade.agent]: {
+            ...prev.agents[upgrade.agent],
+            efficiency: prev.agents[upgrade.agent].efficiency * 1.25
+          }
+        };
+      }
+      
+      return newState;
+    });
+  }, []);
+  
   return (
-    <div className="min-h-screen bg-[#0a0a12] overflow-hidden">
-      {/* Animated background */}
-      <div 
-        className="fixed inset-0 opacity-30"
-        style={{
-          backgroundImage: `
-            radial-gradient(circle at 20% 20%, rgba(168,85,247,0.1) 0%, transparent 40%),
-            radial-gradient(circle at 80% 80%, rgba(59,130,246,0.1) 0%, transparent 40%),
-            linear-gradient(rgba(168,85,247,0.03) 1px, transparent 1px),
-            linear-gradient(90deg, rgba(168,85,247,0.03) 1px, transparent 1px)
-          `,
-          backgroundSize: '100% 100%, 100% 100%, 60px 60px, 60px 60px'
-        }}
-      />
-
-      {/* Header */}
-      <header className="relative z-50 p-4 border-b border-zinc-800/50">
-        <div className="max-w-7xl mx-auto flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <div className="text-4xl">𓂀</div>
-            <div>
-              <h1 className="text-2xl font-black bg-gradient-to-r from-purple-400 via-purple-500 to-purple-600 bg-clip-text text-transparent">
-                OSIRIS HQ
-              </h1>
-              <p className="text-xs text-zinc-500">AI Executive Command Center</p>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-4">
-            <ResourceCounter icon="💰" label="MRR" value="$1,750" color="border-green-500/30" subtext="target: $100K" />
-            <ResourceCounter icon="🏢" label="Clients" value="2" color="border-blue-500/30" subtext="target: 50" />
-            <ResourceCounter icon="🤖" label="AI Team" value="6" color="border-purple-500/30" subtext="all active" />
-          </div>
-        </div>
-      </header>
-
-      {/* Main Content */}
-      <main className="relative z-10 max-w-7xl mx-auto px-4 py-6">
-        <div className="grid grid-cols-12 gap-6">
-          
-          {/* Operations Floor */}
+    <div className="min-h-screen bg-[#0a0a12]">
+      <ResourceBar game={game} />
+      
+      <main className="max-w-7xl mx-auto px-4 py-6">
+        <div className="grid grid-cols-12 gap-4">
+          {/* Left Column - Agents */}
           <div className="col-span-8">
-            <div 
-              className="relative rounded-2xl border border-zinc-800 overflow-hidden"
-              style={{ 
-                height: '520px',
-                background: 'linear-gradient(135deg, rgba(15,15,25,0.9) 0%, rgba(10,10,18,0.95) 100%)',
-                boxShadow: '0 0 80px rgba(168,85,247,0.05), inset 0 0 80px rgba(0,0,0,0.5)'
-              }}
-            >
-              {/* Grid floor */}
-              <div 
-                className="absolute inset-0 opacity-20"
-                style={{
-                  backgroundImage: `
-                    linear-gradient(rgba(168,85,247,0.1) 1px, transparent 1px),
-                    linear-gradient(90deg, rgba(168,85,247,0.1) 1px, transparent 1px)
-                  `,
-                  backgroundSize: '40px 40px'
-                }}
-              />
-
-              {/* Stations */}
-              <Station 
-                exec={executives.osiris}
-                x={50} y={15}
-                metrics={[
-                  { label: 'Tasks Today', value: '24' },
-                  { label: 'Team Sync', value: '100%' }
-                ]}
-              />
-              <Station 
-                exec={executives.iris}
-                x={18} y={38}
-                metrics={[
-                  { label: 'Posts Scheduled', value: '3' },
-                  { label: 'Engagement', value: '+15%' }
-                ]}
-              />
-              <Station 
-                exec={executives.apollo}
-                x={82} y={38}
-                metrics={[
-                  { label: 'Pipeline', value: '15 leads' },
-                  { label: 'Demos Booked', value: '2' }
-                ]}
-              />
-              <Station 
-                exec={executives.atlas}
-                x={18} y={72}
-                metrics={[
-                  { label: 'Sprint Progress', value: '60%' },
-                  { label: 'Bugs Open', value: '3' }
-                ]}
-              />
-              <Station 
-                exec={executives.horus}
-                x={82} y={72}
-                metrics={[
-                  { label: 'Health Score', value: '94%' },
-                  { label: 'Reviews Pending', value: '5' }
-                ]}
-              />
-              <Station 
-                exec={executives.thoth}
-                x={50} y={88}
-                metrics={[
-                  { label: 'Conversion', value: '67%' },
-                  { label: 'Forecast', value: '+$350' }
-                ]}
-              />
-
-              {/* Connection lines */}
-              <svg className="absolute inset-0 w-full h-full pointer-events-none">
-                <defs>
-                  <linearGradient id="lineGradient" x1="0%" y1="0%" x2="100%" y2="0%">
-                    <stop offset="0%" stopColor="rgba(168,85,247,0)" />
-                    <stop offset="50%" stopColor="rgba(168,85,247,0.3)" />
-                    <stop offset="100%" stopColor="rgba(168,85,247,0)" />
-                  </linearGradient>
-                </defs>
-                {/* Osiris to all */}
-                <line x1="50%" y1="20%" x2="20%" y2="40%" stroke="url(#lineGradient)" strokeWidth="1" />
-                <line x1="50%" y1="20%" x2="80%" y2="40%" stroke="url(#lineGradient)" strokeWidth="1" />
-                <line x1="50%" y1="20%" x2="50%" y2="85%" stroke="url(#lineGradient)" strokeWidth="1" strokeDasharray="5,5" />
-                {/* Cross connections */}
-                <line x1="20%" y1="40%" x2="20%" y2="70%" stroke="url(#lineGradient)" strokeWidth="1" />
-                <line x1="80%" y1="40%" x2="80%" y2="70%" stroke="url(#lineGradient)" strokeWidth="1" />
-                <line x1="20%" y1="70%" x2="50%" y2="85%" stroke="url(#lineGradient)" strokeWidth="1" />
-                <line x1="80%" y1="70%" x2="50%" y2="85%" stroke="url(#lineGradient)" strokeWidth="1" />
-              </svg>
-
-              {/* Agents */}
-              {agents.map(agent => (
-                <AgentAvatar key={agent.id} agent={agent} />
+            <h2 className="text-lg font-bold text-zinc-300 mb-3">🤖 AI Executive Team</h2>
+            <div className="grid grid-cols-2 gap-4">
+              {(Object.keys(EXECUTIVES) as ExecutiveKey[]).map(key => (
+                <AgentCard
+                  key={key}
+                  agent={game.agents[key]}
+                  exec={EXECUTIVES[key]}
+                  tasks={tasks}
+                  onAssignTask={handleAssignTask}
+                  energy={game.energy}
+                />
               ))}
-
-              {/* Status bar */}
-              <div className="absolute bottom-0 left-0 right-0 bg-black/60 backdrop-blur-sm px-4 py-2 flex items-center justify-between text-xs border-t border-zinc-800/50">
-                <div className="flex items-center gap-4">
-                  <span className="flex items-center gap-2">
-                    <span className="w-2 h-2 bg-green-400 rounded-full animate-pulse" />
-                    All agents operational
-                  </span>
-                  <span className="text-zinc-500">|</span>
-                  <span className="text-zinc-400">
-                    {agents.filter(a => a.status === 'working').length}/6 working
-                  </span>
-                </div>
-                <span className="text-zinc-500">CVO: Dominic Lutz</span>
-              </div>
             </div>
           </div>
-
-          {/* Right Panel */}
+          
+          {/* Right Column */}
           <div className="col-span-4 space-y-4">
-            {/* Client Empire */}
-            <div className="bg-zinc-900/60 backdrop-blur-sm rounded-xl border border-zinc-800 p-4">
-              <h3 className="text-sm font-bold text-zinc-300 mb-3 flex items-center gap-2">
-                🏢 Client Empire
-              </h3>
-              <div className="space-y-2">
-                <ClientCard name="WinBros Cleaning" mrr="$1,500/mo" health="excellent" agentAssigned="horus" />
-                <ClientCard name="Cedar Rapids Cleaning" mrr="$250/mo" health="good" agentAssigned="horus" />
-                <div className="border-2 border-dashed border-zinc-700 rounded-lg p-3 text-center hover:border-purple-500/50 transition-colors cursor-pointer">
-                  <p className="text-zinc-400 text-sm font-medium">+ Expand Empire</p>
-                  <p className="text-xs text-zinc-600">48 more to $100K MRR</p>
-                </div>
-              </div>
-            </div>
-
-            {/* Activity Feed */}
-            <ActivityFeed activities={activities} />
+            <ClickerArea onClick={handleClick} clickPower={game.clickPower} />
+            <QuestPanel quests={game.quests} onClaim={handleClaimQuest} />
+            <UpgradeShop upgrades={game.upgrades} gold={game.gold} onBuy={handleBuyUpgrade} />
+            <ActivityLog log={game.log} />
           </div>
-        </div>
-
-        {/* Command Bar */}
-        <div className="mt-6">
-          <CommandBar />
         </div>
       </main>
     </div>
