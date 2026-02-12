@@ -158,7 +158,7 @@ const getInitialState = (): GameState => ({
   },
   quests: INITIAL_QUESTS,
   upgrades: INITIAL_UPGRADES,
-  log: [{ message: 'Welcome, CVO. Your empire awaits.', timestamp: new Date(), type: 'info' }],
+  log: [{ message: 'Welcome, CVO. Your empire awaits.', timestamp: new Date(), type: 'info' as const }],
 });
 
 // ============== COMPONENTS ==============
@@ -516,7 +516,7 @@ export default function Game() {
               newLog.unshift({
                 message: `${EXECUTIVES[agentKey].name} completed "${task.name}"!`,
                 timestamp: new Date(),
-                type: 'success'
+                type: 'success' as const
               });
               
               // Update quest progress
@@ -546,7 +546,7 @@ export default function Game() {
           newLog.unshift({
             message: `🎉 LEVEL UP! You are now level ${newLevel}!`,
             timestamp: new Date(),
-            type: 'reward'
+            type: 'reward' as const
           });
         }
         
@@ -592,7 +592,7 @@ export default function Game() {
         log: [{
           message: `${EXECUTIVES[task.agent].name} started "${task.name}"`,
           timestamp: new Date(),
-          type: 'info'
+          type: 'info' as const
         }, ...prev.log].slice(0, 50)
       };
     });
@@ -607,7 +607,7 @@ export default function Game() {
       log: [{
         message: `🏆 Quest complete: "${quest.name}"! +${quest.reward.gold}💰 +${quest.reward.xp}⭐`,
         timestamp: new Date(),
-        type: 'reward'
+        type: 'reward' as const
       }, ...prev.log].slice(0, 50)
     }));
   }, []);
@@ -623,7 +623,7 @@ export default function Game() {
         log: [{
           message: `🔧 Purchased "${upgrade.name}"!`,
           timestamp: new Date(),
-          type: 'reward'
+          type: 'reward' as const
         }, ...prev.log].slice(0, 50)
       };
       
