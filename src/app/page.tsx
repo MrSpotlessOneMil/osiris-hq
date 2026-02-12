@@ -2,112 +2,148 @@
 
 import { useState, useEffect } from 'react';
 
+// AI Executive Team
+const executives = {
+  osiris: { name: 'Osiris', role: 'COO', emoji: '𓂀', color: '#a855f7', description: 'Coordination & Strategy' },
+  iris: { name: 'Iris', role: 'CMO', emoji: '🦞', color: '#ec4899', description: 'Content & Marketing' },
+  apollo: { name: 'Apollo', role: 'CRO', emoji: '🏹', color: '#f59e0b', description: 'Sales & Revenue' },
+  atlas: { name: 'Atlas', role: 'CPO', emoji: '🗺️', color: '#3b82f6', description: 'Product Development' },
+  horus: { name: 'Horus', role: 'CSO', emoji: '🦅', color: '#22c55e', description: 'Customer Success' },
+  thoth: { name: 'Thoth', role: 'CDO', emoji: '📊', color: '#06b6d4', description: 'Data & Analytics' },
+};
+
+type ExecutiveKey = keyof typeof executives;
+
 // Types
-interface Robot {
-  id: number;
+interface Agent {
+  id: ExecutiveKey;
   x: number;
   y: number;
-  targetX: number;
-  targetY: number;
-  task: 'idle' | 'calling' | 'booking' | 'processing' | 'walking';
-  color: string;
+  status: 'working' | 'idle' | 'moving';
+  currentTask: string;
 }
 
 interface Activity {
   id: number;
-  type: 'call' | 'booking' | 'payment' | 'review';
-  message: string;
+  agent: ExecutiveKey;
+  action: string;
   timestamp: Date;
 }
 
-// Robot Worker Component
-function RobotWorker({ robot }: { robot: Robot }) {
-  const taskEmojis = {
-    idle: '🤖',
-    calling: '📞',
-    booking: '📋',
-    processing: '💳',
-    walking: '🤖'
-  };
-
+// Agent Avatar Component
+function AgentAvatar({ agent }: { agent: Agent }) {
+  const exec = executives[agent.id];
+  
   return (
     <div
-      className="absolute transition-all duration-1000 ease-in-out z-20"
+      className="absolute transition-all duration-1000 ease-in-out z-20 cursor-pointer group"
       style={{
-        left: `${robot.x}%`,
-        top: `${robot.y}%`,
+        left: `${agent.x}%`,
+        top: `${agent.y}%`,
         transform: 'translate(-50%, -50%)'
       }}
     >
-      <div className={`relative ${robot.task === 'walking' ? 'animate-bounce' : ''}`}>
-        <span className="text-2xl filter drop-shadow-lg">{taskEmojis[robot.task]}</span>
-        {robot.task !== 'idle' && robot.task !== 'walking' && (
-          <div className="absolute -top-1 -right-1 w-3 h-3 bg-green-400 rounded-full animate-ping" />
+      <div className={`relative ${agent.status === 'moving' ? 'animate-bounce' : ''}`}>
+        {/* Glow effect when working */}
+        {agent.status === 'working' && (
+          <div 
+            className="absolute inset-0 rounded-full blur-md animate-pulse"
+            style={{ backgroundColor: exec.color, opacity: 0.4, transform: 'scale(1.5)' }}
+          />
         )}
-      </div>
-    </div>
-  );
-}
-
-// Building/Station Component
-function Station({ 
-  name, 
-  icon, 
-  x, 
-  y, 
-  activeCount,
-  totalToday,
-  color
-}: { 
-  name: string;
-  icon: string;
-  x: number;
-  y: number;
-  activeCount: number;
-  totalToday: number;
-  color: string;
-}) {
-  return (
-    <div
-      className="absolute transform -translate-x-1/2 -translate-y-1/2 z-10"
-      style={{ left: `${x}%`, top: `${y}%` }}
-    >
-      {/* Building shadow */}
-      <div className="absolute inset-0 bg-black/30 rounded-xl blur-md transform translate-y-2" />
-      
-      {/* Building */}
-      <div 
-        className={`relative bg-gradient-to-br ${color} p-4 rounded-xl border-2 border-white/20 shadow-2xl min-w-[120px]`}
-        style={{ 
-          boxShadow: `0 0 30px ${color.includes('purple') ? 'rgba(168,85,247,0.3)' : color.includes('blue') ? 'rgba(59,130,246,0.3)' : color.includes('green') ? 'rgba(34,197,94,0.3)' : 'rgba(234,179,8,0.3)'}` 
-        }}
-      >
-        <div className="text-center">
-          <span className="text-3xl">{icon}</span>
-          <p className="text-xs font-bold text-white mt-1 drop-shadow">{name}</p>
-          <div className="flex items-center justify-center gap-1 mt-2">
-            <span className="text-lg font-bold text-white">{totalToday}</span>
-            <span className="text-xs text-white/70">today</span>
+        
+        {/* Avatar */}
+        <div 
+          className="relative w-12 h-12 rounded-full flex items-center justify-center text-2xl shadow-lg border-2"
+          style={{ 
+            backgroundColor: `${exec.color}20`,
+            borderColor: exec.color,
+            boxShadow: agent.status === 'working' ? `0 0 20px ${exec.color}` : 'none'
+          }}
+        >
+          {exec.emoji}
+        </div>
+        
+        {/* Status indicator */}
+        <div 
+          className={`absolute -bottom-1 -right-1 w-4 h-4 rounded-full border-2 border-zinc-900 ${
+            agent.status === 'working' ? 'bg-green-400 animate-pulse' : 
+            agent.status === 'moving' ? 'bg-yellow-400' : 'bg-zinc-500'
+          }`}
+        />
+        
+        {/* Tooltip */}
+        <div className="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
+          <div className="bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 whitespace-nowrap">
+            <p className="font-bold text-sm" style={{ color: exec.color }}>{exec.name}</p>
+            <p className="text-xs text-zinc-400">{exec.role} • {exec.description}</p>
+            <p className="text-xs text-zinc-500 mt-1">{agent.currentTask}</p>
           </div>
-          {activeCount > 0 && (
-            <div className="absolute -top-2 -right-2 bg-green-400 text-black text-xs font-bold px-2 py-0.5 rounded-full animate-pulse">
-              {activeCount} active
-            </div>
-          )}
         </div>
       </div>
     </div>
   );
 }
 
-// Resource Counter (Game-style)
-function ResourceCounter({ icon, label, value, color }: { icon: string; label: string; value: string; color: string }) {
+// Station Component
+function Station({ 
+  exec,
+  x, 
+  y, 
+  metrics
+}: { 
+  exec: typeof executives[ExecutiveKey];
+  x: number;
+  y: number;
+  metrics: { label: string; value: string }[];
+}) {
   return (
-    <div className={`flex items-center gap-2 bg-black/40 backdrop-blur-sm px-3 py-2 rounded-lg border ${color}`}>
-      <span className="text-xl">{icon}</span>
+    <div
+      className="absolute transform -translate-x-1/2 -translate-y-1/2 z-10"
+      style={{ left: `${x}%`, top: `${y}%` }}
+    >
+      {/* Station platform */}
+      <div 
+        className="relative p-4 rounded-xl border backdrop-blur-sm min-w-[140px]"
+        style={{ 
+          backgroundColor: `${exec.color}10`,
+          borderColor: `${exec.color}40`,
+          boxShadow: `0 0 30px ${exec.color}20`
+        }}
+      >
+        <div className="text-center mb-3">
+          <p className="text-xs font-bold text-zinc-400 uppercase tracking-wider">{exec.role}</p>
+          <p className="font-bold" style={{ color: exec.color }}>{exec.name}</p>
+        </div>
+        
+        <div className="space-y-2">
+          {metrics.map((m, i) => (
+            <div key={i} className="flex justify-between items-center text-xs">
+              <span className="text-zinc-500">{m.label}</span>
+              <span className="font-mono font-bold text-white">{m.value}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Resource Counter
+function ResourceCounter({ icon, label, value, color, subtext }: { 
+  icon: string; 
+  label: string; 
+  value: string; 
+  color: string;
+  subtext?: string;
+}) {
+  return (
+    <div className={`flex items-center gap-3 bg-zinc-900/80 backdrop-blur-sm px-4 py-3 rounded-xl border ${color}`}>
+      <span className="text-2xl">{icon}</span>
       <div>
-        <p className="text-xs text-zinc-400">{label}</p>
-        <p className="font-bold text-white">{value}</p>
+        <p className="text-xs text-zinc-500 uppercase tracking-wider">{label}</p>
+        <p className="font-bold text-white text-lg">{value}</p>
+        {subtext && <p className="text-xs text-zinc-500">{subtext}</p>}
       </div>
     </div>
   );
@@ -115,97 +151,143 @@ function ResourceCounter({ icon, label, value, color }: { icon: string; label: s
 
 // Activity Feed
 function ActivityFeed({ activities }: { activities: Activity[] }) {
-  const typeIcons = {
-    call: '📞',
-    booking: '✅',
-    payment: '💰',
-    review: '⭐'
+  return (
+    <div className="bg-zinc-900/60 backdrop-blur-sm rounded-xl border border-zinc-800 p-4 h-full">
+      <h3 className="text-sm font-bold text-zinc-300 mb-3 flex items-center gap-2">
+        <span className="w-2 h-2 bg-green-400 rounded-full animate-pulse" />
+        Team Activity
+      </h3>
+      <div className="space-y-2 max-h-[280px] overflow-y-auto">
+        {activities.map((activity) => {
+          const exec = executives[activity.agent];
+          return (
+            <div key={activity.id} className="flex items-start gap-2 text-sm animate-fadeIn py-2 border-b border-zinc-800/50 last:border-0">
+              <span>{exec.emoji}</span>
+              <div>
+                <span className="font-medium" style={{ color: exec.color }}>{exec.name}</span>
+                <span className="text-zinc-400"> {activity.action}</span>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// Client Card
+function ClientCard({ name, mrr, health, agentAssigned }: { 
+  name: string; 
+  mrr: string; 
+  health: 'excellent' | 'good' | 'attention';
+  agentAssigned: ExecutiveKey;
+}) {
+  const exec = executives[agentAssigned];
+  const healthColors = {
+    excellent: 'bg-green-400',
+    good: 'bg-blue-400',
+    attention: 'bg-yellow-400'
   };
 
   return (
-    <div className="bg-black/40 backdrop-blur-sm rounded-xl border border-zinc-700/50 p-4 max-h-[200px] overflow-y-auto">
-      <h3 className="text-sm font-bold text-zinc-300 mb-3 flex items-center gap-2">
-        <span className="w-2 h-2 bg-green-400 rounded-full animate-pulse" />
-        Live Activity
-      </h3>
-      <div className="space-y-2">
-        {activities.map((activity) => (
-          <div key={activity.id} className="flex items-start gap-2 text-sm animate-fadeIn">
-            <span>{typeIcons[activity.type]}</span>
-            <p className="text-zinc-300">{activity.message}</p>
-          </div>
-        ))}
+    <div className="bg-zinc-900/60 rounded-lg p-3 border border-zinc-800 hover:border-purple-500/50 transition-all">
+      <div className="flex items-center justify-between mb-2">
+        <span className="font-medium">{name}</span>
+        <div className={`w-2 h-2 rounded-full ${healthColors[health]}`} />
       </div>
-    </div>
-  );
-}
-
-// Client Card (Tycoon style)
-function ClientTile({ name, status, revenue }: { name: string; status: 'active' | 'idle'; revenue: string }) {
-  return (
-    <div className="bg-gradient-to-br from-zinc-800 to-zinc-900 rounded-lg p-3 border border-zinc-700/50 hover:border-purple-500/50 transition-all">
       <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <div className={`w-2 h-2 rounded-full ${status === 'active' ? 'bg-green-400 animate-pulse' : 'bg-zinc-500'}`} />
-          <span className="font-medium text-sm">{name}</span>
+        <span className="text-green-400 font-bold">{mrr}</span>
+        <div className="flex items-center gap-1 text-xs text-zinc-500">
+          <span>{exec.emoji}</span>
+          <span>{exec.name}</span>
         </div>
-        <span className="text-green-400 font-bold text-sm">{revenue}</span>
       </div>
     </div>
   );
 }
 
-// LLM Command Bar
-function CommandBar({ onSubmit }: { onSubmit: (query: string) => void }) {
+// Command Bar
+function CommandBar() {
   const [query, setQuery] = useState('');
   const [response, setResponse] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [respondingAgent, setRespondingAgent] = useState<ExecutiveKey | null>(null);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!query.trim()) return;
     
     setIsLoading(true);
+    
+    // Determine which agent should respond
+    const q = query.toLowerCase();
+    let agent: ExecutiveKey = 'osiris';
+    if (q.includes('content') || q.includes('social') || q.includes('marketing')) agent = 'iris';
+    else if (q.includes('sales') || q.includes('lead') || q.includes('outbound') || q.includes('revenue')) agent = 'apollo';
+    else if (q.includes('product') || q.includes('feature') || q.includes('build')) agent = 'atlas';
+    else if (q.includes('customer') || q.includes('review') || q.includes('retention')) agent = 'horus';
+    else if (q.includes('data') || q.includes('metric') || q.includes('analytics')) agent = 'thoth';
+    
+    setRespondingAgent(agent);
+    
     setTimeout(() => {
-      setResponse("WinBros is crushing it — 12 calls, 8 bookings (67% conversion). Cedar Rapids had 3 calls, 2 bookings. All robots operational. Revenue trending +22% this month. Recommend focusing outbound on leads from Des Moines area.");
+      const responses: Record<ExecutiveKey, string> = {
+        osiris: "All systems nominal. WinBros conversion at 67%, Cedar Rapids ramping up. Apollo has 15 leads in pipeline, Iris scheduled 3 posts for tomorrow. Recommend we focus on closing the Des Moines prospect this week.",
+        iris: "Content performance: Last Reel hit 2.3K views. Scripts ready for tomorrow's filming session. Competitor Housecall Pro just posted about their AI — I'm drafting a response video positioning us as founder-built, not corporate.",
+        apollo: "Pipeline status: 15 warm leads, 3 qualified, 2 demo calls scheduled this week. Top prospect: Des Moines Cleaning Co ($3K MRR potential). Outbound campaign sent 47 emails today, 12% open rate.",
+        atlas: "Product roadmap: Multi-tenant dashboard 60% complete. Jack pushed pricing engine update yesterday. Priority bug: Cedar Rapids timezone offset on calendar sync. ETA fix: tomorrow.",
+        horus: "Customer health: WinBros green across all metrics. Cedar Rapids had 1 missed callback — followed up, resolved. Review request sent to 5 completed jobs, expecting 3 new 5-stars this week.",
+        thoth: "Key metrics: $1,750 MRR (+15% MoM), 67% call-to-booking conversion, $425 avg job value. Anomaly detected: WinBros call volume up 23% — likely seasonal. Forecast: $2,100 MRR by month end."
+      };
+      
+      setResponse(responses[agent]);
       setIsLoading(false);
     }, 1500);
     
-    onSubmit(query);
     setQuery('');
   };
 
+  const exec = respondingAgent ? executives[respondingAgent] : executives.osiris;
+
   return (
-    <div className="bg-black/60 backdrop-blur-md rounded-2xl border border-purple-500/30 p-4 shadow-2xl">
+    <div className="bg-zinc-900/80 backdrop-blur-md rounded-2xl border border-purple-500/30 p-4 shadow-2xl">
       <form onSubmit={handleSubmit} className="flex items-center gap-3">
-        <span className="text-purple-400 text-xl">𓂀</span>
+        <span className="text-2xl">𓂀</span>
         <input
           type="text"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder="Command your empire... (e.g., 'Show me WinBros performance')"
+          placeholder="Ask your team anything... (try 'sales pipeline' or 'content performance')"
           className="flex-1 bg-transparent border-none outline-none text-white placeholder:text-zinc-500"
         />
         <button 
           type="submit"
-          className="bg-purple-600 hover:bg-purple-500 px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+          className="bg-purple-600 hover:bg-purple-500 px-5 py-2 rounded-lg text-sm font-medium transition-colors"
         >
-          Execute
+          Ask
         </button>
       </form>
+      
       {(isLoading || response) && (
-        <div className="mt-3 pt-3 border-t border-zinc-700/50">
+        <div className="mt-4 pt-4 border-t border-zinc-700/50">
           {isLoading ? (
-            <div className="flex items-center gap-2 text-zinc-400">
+            <div className="flex items-center gap-2">
+              <span className="text-xl">{exec.emoji}</span>
               <div className="flex gap-1">
-                <div className="w-2 h-2 bg-purple-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
-                <div className="w-2 h-2 bg-purple-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
-                <div className="w-2 h-2 bg-purple-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+                <div className="w-2 h-2 rounded-full animate-bounce" style={{ backgroundColor: exec.color, animationDelay: '0ms' }} />
+                <div className="w-2 h-2 rounded-full animate-bounce" style={{ backgroundColor: exec.color, animationDelay: '150ms' }} />
+                <div className="w-2 h-2 rounded-full animate-bounce" style={{ backgroundColor: exec.color, animationDelay: '300ms' }} />
               </div>
-              <span className="text-sm">Osiris is analyzing...</span>
+              <span className="text-sm text-zinc-400">{exec.name} is analyzing...</span>
             </div>
           ) : (
-            <p className="text-sm text-zinc-300 leading-relaxed">{response}</p>
+            <div className="flex gap-3">
+              <span className="text-xl">{exec.emoji}</span>
+              <div>
+                <p className="text-xs font-bold mb-1" style={{ color: exec.color }}>{exec.name} ({exec.role})</p>
+                <p className="text-sm text-zinc-300 leading-relaxed">{response}</p>
+              </div>
+            </div>
           )}
         </div>
       )}
@@ -214,267 +296,261 @@ function CommandBar({ onSubmit }: { onSubmit: (query: string) => void }) {
 }
 
 export default function Dashboard() {
-  const [robots, setRobots] = useState<Robot[]>([
-    { id: 1, x: 25, y: 35, targetX: 25, targetY: 35, task: 'calling', color: '#a855f7' },
-    { id: 2, x: 50, y: 35, targetX: 50, targetY: 35, task: 'booking', color: '#3b82f6' },
-    { id: 3, x: 75, y: 35, targetX: 75, targetY: 35, task: 'processing', color: '#22c55e' },
-    { id: 4, x: 35, y: 55, targetX: 35, targetY: 55, task: 'idle', color: '#eab308' },
-    { id: 5, x: 65, y: 55, targetX: 65, targetY: 55, task: 'calling', color: '#a855f7' },
-    { id: 6, x: 50, y: 70, targetX: 50, targetY: 70, task: 'idle', color: '#3b82f6' },
+  const [agents, setAgents] = useState<Agent[]>([
+    { id: 'osiris', x: 50, y: 20, status: 'working', currentTask: 'Coordinating team operations' },
+    { id: 'iris', x: 20, y: 40, status: 'working', currentTask: 'Scheduling content posts' },
+    { id: 'apollo', x: 80, y: 40, status: 'working', currentTask: 'Following up on leads' },
+    { id: 'atlas', x: 20, y: 70, status: 'idle', currentTask: 'Reviewing PRD updates' },
+    { id: 'horus', x: 80, y: 70, status: 'working', currentTask: 'Sending review requests' },
+    { id: 'thoth', x: 50, y: 85, status: 'working', currentTask: 'Generating daily report' },
   ]);
 
   const [activities, setActivities] = useState<Activity[]>([
-    { id: 1, type: 'call', message: 'Incoming call from (515) 555-0123', timestamp: new Date() },
-    { id: 2, type: 'booking', message: 'New booking: Deep clean for Smith residence', timestamp: new Date() },
-    { id: 3, type: 'payment', message: '$285 payment received from Johnson', timestamp: new Date() },
-    { id: 4, type: 'call', message: 'Call completed - quote sent', timestamp: new Date() },
-    { id: 5, type: 'review', message: '5-star review from Martinez family', timestamp: new Date() },
+    { id: 1, agent: 'apollo', action: 'qualified a new lead from Cedar Rapids', timestamp: new Date() },
+    { id: 2, agent: 'horus', action: 'received 5-star review for WinBros', timestamp: new Date() },
+    { id: 3, agent: 'iris', action: 'scheduled tomorrow\'s content post', timestamp: new Date() },
+    { id: 4, agent: 'thoth', action: 'detected 23% call volume increase', timestamp: new Date() },
+    { id: 5, agent: 'osiris', action: 'updated morning brief for Dominic', timestamp: new Date() },
+    { id: 6, agent: 'atlas', action: 'synced with Jack on pricing engine', timestamp: new Date() },
   ]);
 
-  // Animate robots randomly
+  // Animate agents
   useEffect(() => {
     const interval = setInterval(() => {
-      setRobots(prev => prev.map(robot => {
+      setAgents(prev => prev.map(agent => {
         if (Math.random() > 0.7) {
-          const tasks: Robot['task'][] = ['idle', 'calling', 'booking', 'processing', 'walking'];
-          const stations = [
-            { x: 25, y: 35 }, // Call Center
-            { x: 50, y: 35 }, // Booking Desk  
-            { x: 75, y: 35 }, // Payments
-            { x: 35, y: 55 },
-            { x: 65, y: 55 },
-            { x: 50, y: 70 },
-          ];
-          const newStation = stations[Math.floor(Math.random() * stations.length)];
+          const statuses: Agent['status'][] = ['working', 'working', 'working', 'idle', 'moving'];
+          const tasks: Record<ExecutiveKey, string[]> = {
+            osiris: ['Coordinating team operations', 'Preparing briefing', 'Reviewing metrics', 'Strategic planning'],
+            iris: ['Scheduling content posts', 'Writing video script', 'Analyzing engagement', 'Monitoring competitors'],
+            apollo: ['Following up on leads', 'Sending outbound emails', 'Scheduling demo call', 'Updating pipeline'],
+            atlas: ['Reviewing PRD updates', 'Testing new feature', 'Bug triage', 'Syncing with Jack'],
+            horus: ['Sending review requests', 'Customer check-in', 'Resolving support ticket', 'Onboarding new client'],
+            thoth: ['Generating daily report', 'Analyzing conversion data', 'Forecasting MRR', 'Detecting anomalies'],
+          };
+          
           return {
-            ...robot,
-            x: newStation.x + (Math.random() - 0.5) * 10,
-            y: newStation.y + (Math.random() - 0.5) * 10,
-            task: tasks[Math.floor(Math.random() * tasks.length)]
+            ...agent,
+            x: agent.x + (Math.random() - 0.5) * 8,
+            y: agent.y + (Math.random() - 0.5) * 8,
+            status: statuses[Math.floor(Math.random() * statuses.length)],
+            currentTask: tasks[agent.id][Math.floor(Math.random() * tasks[agent.id].length)]
           };
         }
-        return robot;
+        return agent;
       }));
-    }, 3000);
+    }, 4000);
 
     return () => clearInterval(interval);
   }, []);
 
-  // Add new activities periodically
+  // Add new activities
   useEffect(() => {
-    const messages = [
-      { type: 'call' as const, message: 'New call from Cedar Rapids area' },
-      { type: 'booking' as const, message: 'Recurring clean scheduled for next Tuesday' },
-      { type: 'payment' as const, message: '$175 invoice auto-collected' },
-      { type: 'call' as const, message: 'Quote request - 3BR house' },
-      { type: 'review' as const, message: 'New 5-star review received!' },
-      { type: 'booking' as const, message: 'Move-out clean booked for Friday' },
+    const newActivities: { agent: ExecutiveKey; action: string }[] = [
+      { agent: 'apollo', action: 'sent follow-up to warm lead' },
+      { agent: 'horus', action: 'completed customer check-in call' },
+      { agent: 'iris', action: 'drafted new video hook' },
+      { agent: 'thoth', action: 'updated conversion metrics' },
+      { agent: 'osiris', action: 'synced priorities with team' },
+      { agent: 'atlas', action: 'pushed code update to staging' },
+      { agent: 'apollo', action: 'booked demo call for Thursday' },
+      { agent: 'horus', action: 'sent review request to 3 customers' },
     ];
 
     const interval = setInterval(() => {
-      const newActivity = messages[Math.floor(Math.random() * messages.length)];
+      const activity = newActivities[Math.floor(Math.random() * newActivities.length)];
       setActivities(prev => [{
         id: Date.now(),
-        ...newActivity,
+        ...activity,
         timestamp: new Date()
-      }, ...prev.slice(0, 9)]);
-    }, 5000);
+      }, ...prev.slice(0, 7)]);
+    }, 6000);
 
     return () => clearInterval(interval);
   }, []);
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-[#0a0a1a] via-[#0f0f24] to-[#0a0a1a] overflow-hidden">
-      {/* Animated grid background */}
+    <div className="min-h-screen bg-[#0a0a12] overflow-hidden">
+      {/* Animated background */}
       <div 
-        className="fixed inset-0 opacity-20"
+        className="fixed inset-0 opacity-30"
         style={{
           backgroundImage: `
-            linear-gradient(rgba(168,85,247,0.1) 1px, transparent 1px),
-            linear-gradient(90deg, rgba(168,85,247,0.1) 1px, transparent 1px)
+            radial-gradient(circle at 20% 20%, rgba(168,85,247,0.1) 0%, transparent 40%),
+            radial-gradient(circle at 80% 80%, rgba(59,130,246,0.1) 0%, transparent 40%),
+            linear-gradient(rgba(168,85,247,0.03) 1px, transparent 1px),
+            linear-gradient(90deg, rgba(168,85,247,0.03) 1px, transparent 1px)
           `,
-          backgroundSize: '50px 50px'
+          backgroundSize: '100% 100%, 100% 100%, 60px 60px, 60px 60px'
         }}
       />
 
-      {/* Top HUD */}
-      <header className="relative z-50 p-4">
+      {/* Header */}
+      <header className="relative z-50 p-4 border-b border-zinc-800/50">
         <div className="max-w-7xl mx-auto flex items-center justify-between">
-          {/* Logo */}
-          <div className="flex items-center gap-3">
-            <div className="text-4xl filter drop-shadow-lg">𓂀</div>
+          <div className="flex items-center gap-4">
+            <div className="text-4xl">𓂀</div>
             <div>
-              <h1 className="text-2xl font-black bg-gradient-to-r from-purple-400 to-purple-600 bg-clip-text text-transparent">
+              <h1 className="text-2xl font-black bg-gradient-to-r from-purple-400 via-purple-500 to-purple-600 bg-clip-text text-transparent">
                 OSIRIS HQ
               </h1>
-              <p className="text-xs text-zinc-500">Operations Command Center</p>
+              <p className="text-xs text-zinc-500">AI Executive Command Center</p>
             </div>
           </div>
 
-          {/* Resource Counters */}
-          <div className="flex items-center gap-3">
-            <ResourceCounter icon="💰" label="MRR" value="$1,750" color="border-yellow-500/30" />
-            <ResourceCounter icon="👥" label="Clients" value="2" color="border-blue-500/30" />
-            <ResourceCounter icon="🤖" label="AI Agents" value="6" color="border-purple-500/30" />
-            <ResourceCounter icon="⚡" label="Uptime" value="99.9%" color="border-green-500/30" />
+          <div className="flex items-center gap-4">
+            <ResourceCounter icon="💰" label="MRR" value="$1,750" color="border-green-500/30" subtext="target: $100K" />
+            <ResourceCounter icon="🏢" label="Clients" value="2" color="border-blue-500/30" subtext="target: 50" />
+            <ResourceCounter icon="🤖" label="AI Team" value="6" color="border-purple-500/30" subtext="all active" />
           </div>
         </div>
       </header>
 
-      {/* Main Game View */}
+      {/* Main Content */}
       <main className="relative z-10 max-w-7xl mx-auto px-4 py-6">
         <div className="grid grid-cols-12 gap-6">
-          {/* Operations Floor (Main Area) */}
+          
+          {/* Operations Floor */}
           <div className="col-span-8">
             <div 
-              className="relative bg-gradient-to-br from-zinc-900/80 to-zinc-950/80 rounded-2xl border border-zinc-700/50 overflow-hidden"
+              className="relative rounded-2xl border border-zinc-800 overflow-hidden"
               style={{ 
-                height: '500px',
-                boxShadow: '0 0 60px rgba(168,85,247,0.1), inset 0 0 60px rgba(0,0,0,0.5)'
+                height: '520px',
+                background: 'linear-gradient(135deg, rgba(15,15,25,0.9) 0%, rgba(10,10,18,0.95) 100%)',
+                boxShadow: '0 0 80px rgba(168,85,247,0.05), inset 0 0 80px rgba(0,0,0,0.5)'
               }}
             >
-              {/* Floor grid pattern */}
+              {/* Grid floor */}
               <div 
-                className="absolute inset-0 opacity-30"
+                className="absolute inset-0 opacity-20"
                 style={{
                   backgroundImage: `
-                    linear-gradient(45deg, rgba(168,85,247,0.05) 25%, transparent 25%),
-                    linear-gradient(-45deg, rgba(168,85,247,0.05) 25%, transparent 25%),
-                    linear-gradient(45deg, transparent 75%, rgba(168,85,247,0.05) 75%),
-                    linear-gradient(-45deg, transparent 75%, rgba(168,85,247,0.05) 75%)
+                    linear-gradient(rgba(168,85,247,0.1) 1px, transparent 1px),
+                    linear-gradient(90deg, rgba(168,85,247,0.1) 1px, transparent 1px)
                   `,
-                  backgroundSize: '40px 40px',
-                  backgroundPosition: '0 0, 0 20px, 20px -20px, -20px 0px'
+                  backgroundSize: '40px 40px'
                 }}
               />
 
               {/* Stations */}
               <Station 
-                name="Call Center" 
-                icon="📞" 
-                x={25} 
-                y={30} 
-                activeCount={2}
-                totalToday={15}
-                color="from-purple-600 to-purple-800"
+                exec={executives.osiris}
+                x={50} y={15}
+                metrics={[
+                  { label: 'Tasks Today', value: '24' },
+                  { label: 'Team Sync', value: '100%' }
+                ]}
               />
               <Station 
-                name="Booking Desk" 
-                icon="📋" 
-                x={50} 
-                y={30} 
-                activeCount={1}
-                totalToday={10}
-                color="from-blue-600 to-blue-800"
+                exec={executives.iris}
+                x={18} y={38}
+                metrics={[
+                  { label: 'Posts Scheduled', value: '3' },
+                  { label: 'Engagement', value: '+15%' }
+                ]}
               />
               <Station 
-                name="Payments" 
-                icon="💳" 
-                x={75} 
-                y={30} 
-                activeCount={1}
-                totalToday={8}
-                color="from-green-600 to-green-800"
+                exec={executives.apollo}
+                x={82} y={38}
+                metrics={[
+                  { label: 'Pipeline', value: '15 leads' },
+                  { label: 'Demos Booked', value: '2' }
+                ]}
               />
               <Station 
-                name="Reviews" 
-                icon="⭐" 
-                x={35} 
-                y={65} 
-                activeCount={0}
-                totalToday={3}
-                color="from-yellow-600 to-yellow-800"
+                exec={executives.atlas}
+                x={18} y={72}
+                metrics={[
+                  { label: 'Sprint Progress', value: '60%' },
+                  { label: 'Bugs Open', value: '3' }
+                ]}
               />
               <Station 
-                name="Scheduling" 
-                icon="📅" 
-                x={65} 
-                y={65} 
-                activeCount={1}
-                totalToday={12}
-                color="from-cyan-600 to-cyan-800"
+                exec={executives.horus}
+                x={82} y={72}
+                metrics={[
+                  { label: 'Health Score', value: '94%' },
+                  { label: 'Reviews Pending', value: '5' }
+                ]}
+              />
+              <Station 
+                exec={executives.thoth}
+                x={50} y={88}
+                metrics={[
+                  { label: 'Conversion', value: '67%' },
+                  { label: 'Forecast', value: '+$350' }
+                ]}
               />
 
-              {/* Robots */}
-              {robots.map(robot => (
-                <RobotWorker key={robot.id} robot={robot} />
-              ))}
-
-              {/* Connection lines (decorative) */}
-              <svg className="absolute inset-0 w-full h-full pointer-events-none opacity-20">
-                <line x1="25%" y1="35%" x2="50%" y2="35%" stroke="#a855f7" strokeWidth="2" strokeDasharray="5,5" />
-                <line x1="50%" y1="35%" x2="75%" y2="35%" stroke="#a855f7" strokeWidth="2" strokeDasharray="5,5" />
-                <line x1="35%" y1="65%" x2="65%" y2="65%" stroke="#a855f7" strokeWidth="2" strokeDasharray="5,5" />
-                <line x1="50%" y1="35%" x2="50%" y2="65%" stroke="#a855f7" strokeWidth="2" strokeDasharray="5,5" />
+              {/* Connection lines */}
+              <svg className="absolute inset-0 w-full h-full pointer-events-none">
+                <defs>
+                  <linearGradient id="lineGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+                    <stop offset="0%" stopColor="rgba(168,85,247,0)" />
+                    <stop offset="50%" stopColor="rgba(168,85,247,0.3)" />
+                    <stop offset="100%" stopColor="rgba(168,85,247,0)" />
+                  </linearGradient>
+                </defs>
+                {/* Osiris to all */}
+                <line x1="50%" y1="20%" x2="20%" y2="40%" stroke="url(#lineGradient)" strokeWidth="1" />
+                <line x1="50%" y1="20%" x2="80%" y2="40%" stroke="url(#lineGradient)" strokeWidth="1" />
+                <line x1="50%" y1="20%" x2="50%" y2="85%" stroke="url(#lineGradient)" strokeWidth="1" strokeDasharray="5,5" />
+                {/* Cross connections */}
+                <line x1="20%" y1="40%" x2="20%" y2="70%" stroke="url(#lineGradient)" strokeWidth="1" />
+                <line x1="80%" y1="40%" x2="80%" y2="70%" stroke="url(#lineGradient)" strokeWidth="1" />
+                <line x1="20%" y1="70%" x2="50%" y2="85%" stroke="url(#lineGradient)" strokeWidth="1" />
+                <line x1="80%" y1="70%" x2="50%" y2="85%" stroke="url(#lineGradient)" strokeWidth="1" />
               </svg>
 
-              {/* Status bar at bottom */}
-              <div className="absolute bottom-0 left-0 right-0 bg-black/60 backdrop-blur-sm px-4 py-2 flex items-center justify-between text-xs">
+              {/* Agents */}
+              {agents.map(agent => (
+                <AgentAvatar key={agent.id} agent={agent} />
+              ))}
+
+              {/* Status bar */}
+              <div className="absolute bottom-0 left-0 right-0 bg-black/60 backdrop-blur-sm px-4 py-2 flex items-center justify-between text-xs border-t border-zinc-800/50">
                 <div className="flex items-center gap-4">
-                  <span className="flex items-center gap-1">
+                  <span className="flex items-center gap-2">
                     <span className="w-2 h-2 bg-green-400 rounded-full animate-pulse" />
-                    All systems operational
+                    All agents operational
+                  </span>
+                  <span className="text-zinc-500">|</span>
+                  <span className="text-zinc-400">
+                    {agents.filter(a => a.status === 'working').length}/6 working
                   </span>
                 </div>
-                <span className="text-zinc-500">Last sync: Just now</span>
+                <span className="text-zinc-500">CVO: Dominic Lutz</span>
               </div>
             </div>
           </div>
 
           {/* Right Panel */}
           <div className="col-span-4 space-y-4">
-            {/* Clients */}
-            <div className="bg-black/40 backdrop-blur-sm rounded-xl border border-zinc-700/50 p-4">
+            {/* Client Empire */}
+            <div className="bg-zinc-900/60 backdrop-blur-sm rounded-xl border border-zinc-800 p-4">
               <h3 className="text-sm font-bold text-zinc-300 mb-3 flex items-center gap-2">
                 🏢 Client Empire
               </h3>
               <div className="space-y-2">
-                <ClientTile name="WinBros Cleaning" status="active" revenue="$1,500/mo" />
-                <ClientTile name="Cedar Rapids Cleaning" status="active" revenue="$250/mo" />
-                <div className="border-2 border-dashed border-zinc-700 rounded-lg p-3 text-center">
-                  <p className="text-zinc-500 text-sm">+ Expand Empire</p>
-                  <p className="text-xs text-zinc-600">48 slots remaining</p>
+                <ClientCard name="WinBros Cleaning" mrr="$1,500/mo" health="excellent" agentAssigned="horus" />
+                <ClientCard name="Cedar Rapids Cleaning" mrr="$250/mo" health="good" agentAssigned="horus" />
+                <div className="border-2 border-dashed border-zinc-700 rounded-lg p-3 text-center hover:border-purple-500/50 transition-colors cursor-pointer">
+                  <p className="text-zinc-400 text-sm font-medium">+ Expand Empire</p>
+                  <p className="text-xs text-zinc-600">48 more to $100K MRR</p>
                 </div>
               </div>
             </div>
 
             {/* Activity Feed */}
             <ActivityFeed activities={activities} />
-
-            {/* Today's Stats */}
-            <div className="bg-black/40 backdrop-blur-sm rounded-xl border border-zinc-700/50 p-4">
-              <h3 className="text-sm font-bold text-zinc-300 mb-3">📊 Today&apos;s Conquest</h3>
-              <div className="grid grid-cols-2 gap-3">
-                <div className="text-center p-2 bg-zinc-800/50 rounded-lg">
-                  <p className="text-2xl font-bold text-purple-400">15</p>
-                  <p className="text-xs text-zinc-500">Calls</p>
-                </div>
-                <div className="text-center p-2 bg-zinc-800/50 rounded-lg">
-                  <p className="text-2xl font-bold text-blue-400">10</p>
-                  <p className="text-xs text-zinc-500">Bookings</p>
-                </div>
-                <div className="text-center p-2 bg-zinc-800/50 rounded-lg">
-                  <p className="text-2xl font-bold text-green-400">$847</p>
-                  <p className="text-xs text-zinc-500">Revenue</p>
-                </div>
-                <div className="text-center p-2 bg-zinc-800/50 rounded-lg">
-                  <p className="text-2xl font-bold text-yellow-400">67%</p>
-                  <p className="text-xs text-zinc-500">Conversion</p>
-                </div>
-              </div>
-            </div>
           </div>
         </div>
 
         {/* Command Bar */}
         <div className="mt-6">
-          <CommandBar onSubmit={(q) => console.log('Query:', q)} />
+          <CommandBar />
         </div>
       </main>
-
-      {/* Ambient glow effects */}
-      <div className="fixed top-1/4 left-1/4 w-96 h-96 bg-purple-600/10 rounded-full blur-3xl pointer-events-none" />
-      <div className="fixed bottom-1/4 right-1/4 w-96 h-96 bg-blue-600/10 rounded-full blur-3xl pointer-events-none" />
     </div>
   );
 }
